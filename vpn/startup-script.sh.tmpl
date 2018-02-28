@@ -1,0 +1,79 @@
+#!/bin/bash
+
+# Copyright 2008-2018 Univa Corporation
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#    http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+readonly LOCAL_NETWORK="@LOCAL_NETWORK@"
+readonly LOCAL_NETMASK="@LOCAL_NETMASK@"
+
+yum -y install epel-release && yum -y install openvpn
+
+[[ -d /etc/openvpn ]] || {
+  echo "Error: /etc/openvpn directory does not exist" >&2
+  exit 1
+}
+
+# Cleanup any existing files
+echo -n "Cleaning up any existing OpenVPN files... "
+rm -f /etc/openvpn/{ipp.txt,openvpn-status.log}
+echo "done."
+
+echo "Creating /etc/openvpn/server.key"
+
+cat <<ENDL | base64 -d >/etc/openvpn/server.key
+@server_key@
+ENDL
+
+chmod 0400 /etc/openvpn/server.key
+
+echo "Creating /etc/openvpn/server.crt"
+
+cat <<ENDL | base64 -d >/etc/openvpn/server.crt
+@server_crt@
+ENDL
+
+echo "Creating /etc/openvpn/ca.crt"
+
+cat <<ENDL | base64 -d >/etc/openvpn/ca.crt
+@ca_crt@
+ENDL
+
+echo "Creating /etc/openvpn/server.conf"
+
+cat <<ENDL | base64 -d >/etc/openvpn/server.conf 
+@server_conf@
+ENDL
+
+echo "Creating /etc/openvpn/dh2048.pem"
+
+cat <<ENDL | base64 -d >/etc/openvpn/dh2048.pem 
+@dh2048_pem@
+ENDL
+
+echo "Completing OpenVPN configuration... "
+mkdir /etc/openvpn/ccd
+cat >/etc/openvpn/ccd/client <<ENDL
+iroute ${LOCAL_NETWORK} ${LOCAL_NETMASK}
+ENDL
+echo "done."
+
+echo "Enabling IP forwarding... "
+echo 1 > /proc/sys/net/ipv4/ip_forward
+echo "done."
+
+echo "Enabling OpenVPN service"
+systemctl enable openvpn@server
+
+echo "Starting OpenVPN service"
+systemctl start openvpn@server
