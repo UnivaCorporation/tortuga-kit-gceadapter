@@ -1,5 +1,5 @@
 {
-  "name": "gce",
+  "name": "gceadapter",
   "version": "6.3.0",
   "iteration": "0",
   "description": "Google Compute Engine resource adapter"

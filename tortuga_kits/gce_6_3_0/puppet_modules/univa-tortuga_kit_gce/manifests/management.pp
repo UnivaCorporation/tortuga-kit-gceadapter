@@ -12,25 +12,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-class tortuga_kit_gce::management::package {
+class tortuga_kit_gceadapater::management::package {
   require tortuga::packages
 
   tortuga::pip_install { 'google-api-python-client': }
 }
 
-class tortuga_kit_gce::management::post_install {
-  require tortuga_kit_gce::management::package
+class tortuga_kit_gceadapater::management::post_install {
+  require tortuga_kit_gceadapater::management::package
 
-  include tortuga_kit_gce::config
+  include tortuga_kit_gceadapater::config
 
   tortuga::run_post_install { 'tortuga_kit_gce_management_post_install':
-    kitdescr  => $tortuga_kit_gce::config::kitdescr,
-    compdescr => $tortuga_kit_gce::management::compdescr,
+    kitdescr  => $tortuga_kit_gceadapater::config::kitdescr,
+    compdescr => $tortuga_kit_gceadapater::management::compdescr,
   }
 }
 
-class tortuga_kit_gce::management::config {
-  require tortuga_kit_gce::management::post_install
+class tortuga_kit_gceadapater::management::config {
+  require tortuga_kit_gceadapater::management::post_install
 
   include tortuga::config
 
@@ -59,8 +59,8 @@ class tortuga_kit_gce::management::config {
 
 }
 
-class tortuga_kit_gce::management::service {
-  require tortuga_kit_gce::management::config
+class tortuga_kit_gceadapater::management::service {
+  require tortuga_kit_gceadapater::management::config
 
   if versioncmp($::operatingsystemmajrelease, '7') < 0 {
     $svcname = 'gce_monitord'
@@ -76,17 +76,17 @@ class tortuga_kit_gce::management::service {
   }
 }
 
-class tortuga_kit_gce::management {
-  $compdescr = "management-${tortuga_kit_gce::config::major_version}"
+class tortuga_kit_gceadapater::management {
+  $compdescr = "management-${tortuga_kit_gceadapater::config::major_version}"
 
   # Install dependent packages, configure them, and restart Tortuga webservice
-  contain tortuga_kit_gce::management::package
-  contain tortuga_kit_gce::management::config
-  contain tortuga_kit_gce::management::service
+  contain tortuga_kit_gceadapater::management::package
+  contain tortuga_kit_gceadapater::management::config
+  contain tortuga_kit_gceadapater::management::service
 
-  Class['tortuga_kit_gce::management::config'] ~>
-    Class['tortuga_kit_gce::management::service']
+  Class['tortuga_kit_gceadapater::management::config'] ~>
+    Class['tortuga_kit_gceadapater::management::service']
 
-  Class['tortuga_kit_gce::management::config'] ~>
+  Class['tortuga_kit_gceadapater::management::config'] ~>
     Class['tortuga_kit_base::installer::webservice::server']
 }
