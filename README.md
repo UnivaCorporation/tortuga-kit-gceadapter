@@ -20,7 +20,7 @@ Install the kit:
 install-kit kit-gceadapter*.tar.bz2
 ```
 
-See the Tortuga Installation and Administration Guide for configuration
+See the [Tortuga Installation and Administration Guide](https://github.com/UnivaCorporation/tortuga/blob/master/doc/tortuga-6-admin-guide.md) for configuration
 details.
 
 [Tortuga]: https://github.com/UnivaCorporation/tortuga "Tortuga"
