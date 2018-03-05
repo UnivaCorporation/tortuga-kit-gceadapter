@@ -12,11 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-class tortuga_kit_gceadapater::params {
-  $kit_name = 'gce'
-  $major_version = '6.3'
-  $kit_version = "${major_version}.0"
-  $kit_iteration = '0'
-
-  $kitdescr = "${kit_name}-${kit_version}-${kit_iteration}"
-}
+# The baseline for module testing used by Puppet Labs is that each manifest
+# should have a corresponding test manifest that declares that class or defined
+# type.
+#
+# Tests are then run by using puppet apply --noop (to check for compilation
+# errors and view a log of events) or by fully applying the test in a virtual
+# environment (to compare the resulting system state to the desired state).
+#
+# Learn more about module testing here:
+# http://docs.puppetlabs.com/guides/tests_smoke.html
+#
+include tortuga_kit_gceadapter

@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-
 # Copyright 2008-2018 Univa Corporation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,14 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from tortuga.kit.mixins import ResourceAdapterMixin
-from tortuga.kit.installer import KitInstallerBase
+class tortuga_kit_gceadapter::params {
+  $kit_name = 'gceadapter'
+  $major_version = '6.3'
+  $kit_version = "${major_version}.0"
+  $kit_iteration = '0'
 
-
-class GceInstaller(ResourceAdapterMixin, KitInstallerBase):
-    puppet_modules = ['univa-tortuga_kit_gce']
-    config_files = [
-        'gce-instance-sizes.csv',
-        'startup_script.py',
-    ]
-    resource_adapter_name = 'gce'
+  $kitdescr = "${kit_name}-${kit_version}-${kit_iteration}"
+}

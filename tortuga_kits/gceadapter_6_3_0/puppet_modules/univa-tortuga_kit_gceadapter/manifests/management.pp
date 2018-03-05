@@ -12,25 +12,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-class tortuga_kit_gceadapater::management::package {
+class tortuga_kit_gceadapter::management::package {
   require tortuga::packages
 
   tortuga::pip_install { 'google-api-python-client': }
 }
 
-class tortuga_kit_gceadapater::management::post_install {
-  require tortuga_kit_gceadapater::management::package
+class tortuga_kit_gceadapter::management::post_install {
+  require tortuga_kit_gceadapter::management::package
 
-  include tortuga_kit_gceadapater::config
+  include tortuga_kit_gceadapter::config
 
   tortuga::run_post_install { 'tortuga_kit_gce_management_post_install':
-    kitdescr  => $tortuga_kit_gceadapater::config::kitdescr,
-    compdescr => $tortuga_kit_gceadapater::management::compdescr,
+    kitdescr  => $tortuga_kit_gceadapter::config::kitdescr,
+    compdescr => $tortuga_kit_gceadapter::management::compdescr,
   }
 }
 
-class tortuga_kit_gceadapater::management::config {
-  require tortuga_kit_gceadapater::management::post_install
+class tortuga_kit_gceadapter::management::config {
+  require tortuga_kit_gceadapter::management::post_install
 
   include tortuga::config
 
@@ -41,14 +41,14 @@ class tortuga_kit_gceadapater::management::config {
 
   if versioncmp($::operatingsystemmajrelease, '7') < 0 {
     file { '/etc/rc.d/init.d/gce_monitord':
-      content => template('tortuga_kit_gce/gce_monitord.sysvinit.erb'),
+      content => template('tortuga_kit_gceadapter/gce_monitord.sysvinit.erb'),
       mode    => '0755',
     }
   } elsif versioncmp($::operatingsystemmajrelease, '7') >= 0 {
     # Install systemd service file on RHEL/CentOS 7.x
 
     file { '/usr/lib/systemd/system/gce_monitord.service':
-      content => template('tortuga_kit_gce/gce_monitord.service.erb'),
+      content => template('tortuga_kit_gceadapter/gce_monitord.service.erb'),
       mode    => '0644',
     } ~>
     exec { 'refresh_after_installing_gce_monitord_service':
@@ -59,8 +59,8 @@ class tortuga_kit_gceadapater::management::config {
 
 }
 
-class tortuga_kit_gceadapater::management::service {
-  require tortuga_kit_gceadapater::management::config
+class tortuga_kit_gceadapter::management::service {
+  require tortuga_kit_gceadapter::management::config
 
   if versioncmp($::operatingsystemmajrelease, '7') < 0 {
     $svcname = 'gce_monitord'
@@ -76,17 +76,17 @@ class tortuga_kit_gceadapater::management::service {
   }
 }
 
-class tortuga_kit_gceadapater::management {
-  $compdescr = "management-${tortuga_kit_gceadapater::config::major_version}"
+class tortuga_kit_gceadapter::management {
+  $compdescr = "management-${tortuga_kit_gceadapter::config::major_version}"
 
   # Install dependent packages, configure them, and restart Tortuga webservice
-  contain tortuga_kit_gceadapater::management::package
-  contain tortuga_kit_gceadapater::management::config
-  contain tortuga_kit_gceadapater::management::service
+  contain tortuga_kit_gceadapter::management::package
+  contain tortuga_kit_gceadapter::management::config
+  contain tortuga_kit_gceadapter::management::service
 
-  Class['tortuga_kit_gceadapater::management::config'] ~>
-    Class['tortuga_kit_gceadapater::management::service']
+  Class['tortuga_kit_gceadapter::management::config'] ~>
+    Class['tortuga_kit_gceadapter::management::service']
 
-  Class['tortuga_kit_gceadapater::management::config'] ~>
+  Class['tortuga_kit_gceadapter::management::config'] ~>
     Class['tortuga_kit_base::installer::webservice::server']
 }
