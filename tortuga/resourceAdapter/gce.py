@@ -211,10 +211,9 @@ class Gce(ResourceAdapter): \
         self.__validate_configuration(
             session, dbHardwareProfile, dbSoftwareProfile)
 
-        if not dbSoftwareProfile or dbSoftwareProfile.isIdle and \
-                not False:
+        if not dbSoftwareProfile or dbSoftwareProfile.isIdle:
             raise UnsupportedOperation(
-                'Idle nodes not supported when VPN not in use')
+                'Idle nodes not supported with GCE resource adapter')
 
     def suspendActiveNode(self, nodeId): \
             # pylint: disable=unused-argument,no-self-use
@@ -1892,11 +1891,14 @@ def _gevent_blocking_call(gce_service, auth_http, project_id, response,
 
             if status != 'DONE':
                 if attempt > 0:
-                    temp = min(max_sleep_time, (polling_interval * 1000) * 2 ** attempt)
+                    temp = min(max_sleep_time,
+                               (polling_interval * 1000) * 2 ** attempt)
 
-                    sleeptime = (temp / 2 + random.randint(0, temp / 2)) / 1000.0
+                    sleeptime = \
+                        (temp / 2 + random.randint(0, temp / 2)) / 1000.0
                 else:
-                    sleeptime = polling_interval * 1000
+                    # Set sleep time after launch to 10s
+                    sleeptime = 10
 
                 gevent.sleep(sleeptime)
 
