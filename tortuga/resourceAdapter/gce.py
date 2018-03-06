@@ -20,10 +20,12 @@ import shlex
 import re
 import threading
 import random
+from typing import Optional, List
 import json
 import time
 import httplib2
 import subprocess
+from sqlalchemy.orm.session import Session
 
 import apiclient
 from apiclient.discovery import build
@@ -36,6 +38,8 @@ from tortuga.exceptions.commandFailed import CommandFailed
 from tortuga.exceptions.invalidArgument import InvalidArgument
 from tortuga.db.nics import Nics
 from tortuga.db.nodes import Nodes
+from tortuga.db.hardwareProfiles import HardwareProfiles
+from tortuga.db.softwareProfiles import SoftwareProfiles
 from tortuga.utility.cloudinit import dump_cloud_config_yaml, \
     get_cloud_init_path
 from tortuga.resourceAdapter.utility import get_provisioning_nics, \
@@ -156,8 +160,9 @@ class Gce(ResourceAdapter): \
                     ' is \'%s\' and VPN is enabled' % (
                         dbHardwareProfile.location))
 
-    def start(self, addNodesRequest, dbSession, dbHardwareProfile,
-              dbSoftwareProfile=None): \
+    def start(self, addNodesRequest, dbSession: Session,
+              dbHardwareProfile: HardwareProfiles,
+              dbSoftwareProfile: Optional[SoftwareProfiles] = None) -> List[Nodes]: \
             # pylint: disable=unused-argument
         """
         Raises:
@@ -180,8 +185,8 @@ class Gce(ResourceAdapter): \
 
             # Add regular instance-backed (active) nodes
             nodes = self.__addActiveNodes(
-                session, addNodesRequest, dbSession, dbHardwareProfile,
-                dbSoftwareProfile)
+                session, dbSession, addNodesRequest,
+                dbHardwareProfile, dbSoftwareProfile)
 
             # This is a necessary evil for the time being, until there's
             # a proper context manager implemented.
@@ -669,7 +674,8 @@ class Gce(ResourceAdapter): \
             if 'dns_options' in configDict else None
 
         try:
-            configDict['vcpus'] = int(configDict['vcpus'])
+            if 'vcpus' in configDict:
+                configDict['vcpus'] = int(configDict['vcpus'])
         except ValueError:
                 raise ConfigurationError(
                     'Invalid/malformed value for \'vcpus\'')
@@ -877,13 +883,15 @@ dns_nameservers = %(dns_nameservers)s
 
         return result
 
-    def __init_new_node(self, session, dbHardwareProfile,
-                        dbSoftwareProfile, generate_ip): \
+    def __init_new_node(self, session: dict, dbSession: Session,
+                        dbHardwareProfile: HardwareProfiles,
+                        dbSoftwareProfile: SoftwareProfiles,
+                        generate_ip: bool) -> Nodes: \
             # pylint: disable=no-self-use
         # Initialize Nodes object for insertion into database
 
         name = self.__generate_node_name(
-            session, dbHardwareProfile, generate_ip)
+            session, dbSession, dbHardwareProfile, generate_ip)
 
         node = Nodes(name=name)
         node.state = 'Launching'
@@ -893,8 +901,11 @@ dns_nameservers = %(dns_nameservers)s
 
         return node
 
-    def __createNodes(self, session, addNodesRequest, dbHardwareProfile,
-                      dbSoftwareProfile, generate_ip=True): \
+    def __createNodes(self, session: dict, dbSession: Session,
+                      addNodesRequest: dict,
+                      dbHardwareProfile: HardwareProfiles,
+                      dbSoftwareProfile: SoftwareProfiles,
+                      generate_ip: Optional[bool] = True) -> List[Nodes]: \
             # pylint: disable=unused-argument
         """
         Raises:
@@ -907,12 +918,13 @@ dns_nameservers = %(dns_nameservers)s
         nodeCount = addNodesRequest['count'] \
             if 'count' in addNodesRequest else 1
 
-        nodeList = []
+        nodeList: List[Nodes] = []
 
         for _ in range(nodeCount):
             # Initialize new Nodes object
             node = self.__init_new_node(
                 session,
+                dbSession,
                 dbHardwareProfile,
                 dbSoftwareProfile,
                 generate_ip=generate_ip)
@@ -940,10 +952,13 @@ dns_nameservers = %(dns_nameservers)s
 
         return nodeList
 
-    def __generate_node_name(self, session, hardwareprofile, generate_ip):
+    def __generate_node_name(self, session: dict, dbSession: Session,
+                             hardwareprofile: HardwareProfiles,
+                             generate_ip: bool):
         # Generate node host name
 
         fqdn = self.addHostApi.generate_node_name(
+            dbSession,
             hardwareprofile.nameFormat, randomize=not generate_ip,
             dns_zone=self.private_dns_zone)
 
@@ -1327,8 +1342,10 @@ dns_nameservers = %(dns_nameservers)s
 
         return None
 
-    def __addActiveNodes(self, session, addNodesRequest, dbSession,
-                         dbHardwareProfile, dbSoftwareProfile):
+    def __addActiveNodes(self, session: dict, dbSession: Session,
+                         addNodesRequest: dict,
+                         dbHardwareProfile: HardwareProfiles,
+                         dbSoftwareProfile: SoftwareProfiles) -> List[Nodes]:
         """
         Create active nodes
         """
@@ -1344,8 +1361,8 @@ dns_nameservers = %(dns_nameservers)s
 
         # Create node entries in the database
         nodes = self.__createNodes(
-            session, addNodesRequest, dbHardwareProfile, dbSoftwareProfile,
-            generate_ip=False)
+            session, dbSession, addNodesRequest, dbHardwareProfile,
+            dbSoftwareProfile, generate_ip=False)
 
         dbSession.add_all(nodes)
         dbSession.commit()
@@ -1843,7 +1860,11 @@ def wait_for_instance(session, pending_node_request):
 
 
 def _gevent_blocking_call(gce_service, auth_http, project_id, response,
-                          polling_interval=Gce.DEFAULT_SLEEP_TIME):
+                          polling_interval: int = Gce.DEFAULT_SLEEP_TIME):
+    """
+    polling_interval is seconds
+    """
+
     status = response['status']
 
     attempt = 0
@@ -1870,12 +1891,12 @@ def _gevent_blocking_call(gce_service, auth_http, project_id, response,
             status = response['status']
 
             if status != 'DONE':
-                if attempt == 0:
-                    temp = min(max_sleep_time, polling_interval * 2 ** attempt)
+                if attempt > 0:
+                    temp = min(max_sleep_time, (polling_interval * 1000) * 2 ** attempt)
 
-                    sleeptime = temp / 2 + random.randint(0, temp / 2)
+                    sleeptime = (temp / 2 + random.randint(0, temp / 2)) / 1000.0
                 else:
-                    sleeptime = polling_interval
+                    sleeptime = polling_interval * 1000
 
                 gevent.sleep(sleeptime)
 
