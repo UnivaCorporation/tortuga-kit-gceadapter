@@ -179,14 +179,14 @@ class Gce(ResourceAdapter): \
         try:
             if dbSoftwareProfile is None or dbSoftwareProfile.isIdle:
                 # Add idle nodes
-                return self.__addIdleNodes(
+                nodes: List[Nodes] = self.__addIdleNodes(
                     session, addNodesRequest, dbHardwareProfile,
                     dbSoftwareProfile)
-
-            # Add regular instance-backed (active) nodes
-            nodes = self.__addActiveNodes(
-                session, dbSession, addNodesRequest,
-                dbHardwareProfile, dbSoftwareProfile)
+            else:
+                # Add regular instance-backed (active) nodes
+                nodes: List[Nodes] = self.__addActiveNodes(
+                    session, dbSession, addNodesRequest,
+                    dbHardwareProfile, dbSoftwareProfile)
 
             # This is a necessary evil for the time being, until there's
             # a proper context manager implemented.
