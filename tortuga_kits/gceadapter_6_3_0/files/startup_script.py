@@ -17,7 +17,7 @@
 import os
 import sys
 import subprocess
-import urllib.request, urllib.error, urllib.parse
+import urllib2
 import platform
 import time
 import base64
@@ -86,7 +86,7 @@ def install_puppet(distro_maj_vers):
 def set_hostname():
     url = 'https://%s:%s/v1/identify-node' % (installerIpAddress, port)
 
-    req = urllib.request.Request(url)
+    req = urllib2.Request(url)
 
     req.add_header('Authorization',
                    'Basic ' + base64.standard_b64encode(
@@ -94,25 +94,25 @@ def set_hostname():
 
     for nCount in range(5):
         try:
-            response = urllib.request.urlopen(req)
+            response = urllib2.urlopen(req)
 
             break
-        except urllib.error.URLError:
+        except urllib2.URLError:
             pass
-        except urllib.error.HTTPError as ex:
+        except urllib2.HTTPError as ex:
             if ex.code == 401:
-                sys.stderr.write('Invalid Tortuga webservice credentials\n')
+                sys.stderr.write('Invalid UniCloud webservice credentials\n')
                 sys.exit(1)
             elif ex.code == 404:
                 # Unrecoverable
                 sys.stderr.write(
-                    'URI not found; invalid Tortuga webservice'
+                    'URI not found; invalid UniCloud webservice'
                     ' configuration\n')
                 sys.exit(1)
 
             time.sleep(2 ** (nCount + 1))
     else:
-        sys.stderr.write('Unable to communicate with Tortuga webservice\n')
+        sys.stderr.write('Unable to communicate with UniCloud webservice\n')
         sys.exit(1)
 
     try:
@@ -120,15 +120,15 @@ def set_hostname():
 
         if response.code != 200:
             if 'error' in d:
-                errmsg = 'Tortuga webservice error: msg=[%s]' % (
+                errmsg = 'UniCloud webservice error: msg=[%s]' % (
                     error['message'])
             else:
-                errmsg = 'Tortuga webservice internal error'
+                errmsg = 'UniCloud webservice internal error'
 
             raise Exception(errmsg)
 
         if 'node' not in d or 'name' not in d['node']:
-            raise Exception('Malformed JSON response from Tortuga webservice')
+            raise Exception('Malformed JSON response from UniCloud webservice')
 
         hostname = d['node']['name'].lower()
     except ValueError as exc:
