@@ -211,10 +211,9 @@ class Gce(ResourceAdapter): \
         self.__validate_configuration(
             session, dbHardwareProfile, dbSoftwareProfile)
 
-        if not dbSoftwareProfile or dbSoftwareProfile.isIdle and \
-                not False:
+        if not dbSoftwareProfile or dbSoftwareProfile.isIdle:
             raise UnsupportedOperation(
-                'Idle nodes not supported when VPN not in use')
+                'Idle nodes not supported with GCE resource adapter')
 
     def suspendActiveNode(self, nodeId): \
             # pylint: disable=unused-argument,no-self-use
