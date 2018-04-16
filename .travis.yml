@@ -1,0 +1,29 @@
+language: python
+python:
+- '3.6'
+services:
+- docker
+env:
+- TORTUGA_BUILD_DOCKER="true"
+before_install:
+- docker pull puppet/puppet-agent
+install:
+- pip install tox
+- git clone https://github.com/UnivaCorporation/tortuga.git tortuga-base
+- cd tortuga-base/
+- pip install -r requirements.txt
+- paver build
+- cd ../
+- build-kit
+script:
+- echo "Done"
+deploy:
+  provider: releases
+  api_key:
+    secure: ieTyFVgCm/GCZ91VyX890DNm/TIUUBAS+G684t6Et3Xqgu2u+D8xvxR9GkkbZ0FIRfFzBrlj0pg/DaoOmgMd4kGFU+ffBWyYGlcxeYQOvPfYL9OaVpSUyLsVSZ7m7162TYxQ18dV/iM48NWCF57tXkELo/PQzijWI+vk0xey2zL+4etJUjKzx4EKkLWCtJ8eDPD56lCl2uFfg1zyJjzOy242et1nzlozeC16spMdbL99k/91h0xU6vJA3mA9WhrpjUoKYfkLjqd15zxofmA32uysx8yQs/yP193qAKvD3u7QcN81T6mKj30quebPIVl+AEh+dcmAdCQzNbiJZYMRg9Z7bElySpUQTIo3KRlQyaMIXN7HaY5zOLFkpOM7tSYUblfC7zic8NnjIyqdjvyqdvdzqTiuihaA6gbUH8QMCcPylAEa70BoCJ4VZE05HgUVGCo0p7RTnDU4+LC7qgDaaG+Y/B5lx5SIVqqdNrvVIeq2NMTRlXNh9rESjELImDM2/2ZDgGaYO1lgP6eSSQNLFViQySfy3cv5lUHYqzAWdbYZ9qcfXEv4tCYkRbZgbMZHjwYg5WJiSpkMPoD5bpoSaXZcvuSr+H0h3S1xZnba+zOLd++Xf1rE1UT3UWFwDOAy+4f5ukbN53ebOZhdJfe/Thh0UR91HF5rKzwdD9+/Vgs=
+  file_glob: true
+  file: "dist/kit-gceadapter*.tar.bz2"
+  skip_cleanup: true
+  on:
+    all_branches: true
+    tags: true
