@@ -36,10 +36,10 @@ from tortuga.os_utility import osUtility
 from tortuga.exceptions.configurationError import ConfigurationError
 from tortuga.exceptions.commandFailed import CommandFailed
 from tortuga.exceptions.invalidArgument import InvalidArgument
-from tortuga.db.nics import Nics
-from tortuga.db.nodes import Nodes
-from tortuga.db.hardwareProfiles import HardwareProfiles
-from tortuga.db.softwareProfiles import SoftwareProfiles
+from tortuga.db.models.nic import Nic
+from tortuga.db.models.node import Node
+from tortuga.db.models.hardwareProfile import HardwareProfile
+from tortuga.db.models.softwareProfile import SoftwareProfile
 from tortuga.utility.cloudinit import dump_cloud_config_yaml, \
     get_cloud_init_path
 from tortuga.resourceAdapter.utility import get_provisioning_nics, \
@@ -161,8 +161,8 @@ class Gce(ResourceAdapter): \
                         dbHardwareProfile.location))
 
     def start(self, addNodesRequest, dbSession: Session,
-              dbHardwareProfile: HardwareProfiles,
-              dbSoftwareProfile: Optional[SoftwareProfiles] = None) -> List[Nodes]: \
+              dbHardwareProfile: HardwareProfile,
+              dbSoftwareProfile: Optional[SoftwareProfile] = None) -> List[Node]: \
             # pylint: disable=unused-argument
         """
         Raises:
@@ -222,9 +222,9 @@ class Gce(ResourceAdapter): \
         return False
 
     def idleActiveNode(self, dbNodes):
-        # FYI... when this method is called, 'Nodes' are already marked idle
+        # FYI... when this method is called, 'Node' are already marked idle
 
-        # Iterate over list of 'Nodes' database objects.
+        # Iterate over list of 'Node' database objects.
         for node in dbNodes:
             session = self.__get_session(
                 self.getResourceAdapterConfigProfileByNodeName(node.name))
@@ -402,7 +402,7 @@ class Gce(ResourceAdapter): \
             CommandFailed
         """
 
-        # Iterate over list of Nodes database objects
+        # Iterate over list of Node database objects
         for node in dbNodes:
             self.getLogger().debug(
                 '[gce] deleteNode(): node=[%s]' % (node.name))
@@ -883,16 +883,16 @@ dns_nameservers = %(dns_nameservers)s
         return result
 
     def __init_new_node(self, session: dict, dbSession: Session,
-                        dbHardwareProfile: HardwareProfiles,
-                        dbSoftwareProfile: SoftwareProfiles,
-                        generate_ip: bool) -> Nodes: \
+                        dbHardwareProfile: HardwareProfile,
+                        dbSoftwareProfile: SoftwareProfile,
+                        generate_ip: bool) -> Node: \
             # pylint: disable=no-self-use
-        # Initialize Nodes object for insertion into database
+        # Initialize Node object for insertion into database
 
         name = self.__generate_node_name(
             session, dbSession, dbHardwareProfile, generate_ip)
 
-        node = Nodes(name=name)
+        node = Node(name=name)
         node.state = 'Launching'
         node.isIdle = False
         node.hardwareprofile = dbHardwareProfile
@@ -902,9 +902,9 @@ dns_nameservers = %(dns_nameservers)s
 
     def __createNodes(self, session: dict, dbSession: Session,
                       addNodesRequest: dict,
-                      dbHardwareProfile: HardwareProfiles,
-                      dbSoftwareProfile: SoftwareProfiles,
-                      generate_ip: Optional[bool] = True) -> List[Nodes]: \
+                      dbHardwareProfile: HardwareProfile,
+                      dbSoftwareProfile: SoftwareProfile,
+                      generate_ip: Optional[bool] = True) -> List[Node]: \
             # pylint: disable=unused-argument
         """
         Raises:
@@ -917,10 +917,10 @@ dns_nameservers = %(dns_nameservers)s
         nodeCount = addNodesRequest['count'] \
             if 'count' in addNodesRequest else 1
 
-        nodeList: List[Nodes] = []
+        nodeList: List[Node] = []
 
         for _ in range(nodeCount):
-            # Initialize new Nodes object
+            # Initialize new Node object
             node = self.__init_new_node(
                 session,
                 dbSession,
@@ -939,7 +939,7 @@ dns_nameservers = %(dns_nameservers)s
                 ip = self.addHostApi.generate_provisioning_ip_address(
                     hardwareprofilenetwork.network)
 
-                nic = Nics(ip=ip, boot=True)
+                nic = Nic(ip=ip, boot=True)
                 nic.networkId = hardwareprofilenetwork.network.id
                 nic.network = hardwareprofilenetwork.network
                 nic.networkdevice = hardwareprofilenetwork.networkdevice
@@ -952,7 +952,7 @@ dns_nameservers = %(dns_nameservers)s
         return nodeList
 
     def __generate_node_name(self, session: dict, dbSession: Session,
-                             hardwareprofile: HardwareProfiles,
+                             hardwareprofile: HardwareProfile,
                              generate_ip: bool):
         # Generate node host name
 
@@ -1288,7 +1288,7 @@ dns_nameservers = %(dns_nameservers)s
         internal_ip = self.__get_instance_internal_ip(instance)
 
         # All nodes have a provisioning nic
-        provisioning_nic = Nics(ip=internal_ip, boot=True)
+        provisioning_nic = Nic(ip=internal_ip, boot=True)
 
         node.nics.append(provisioning_nic)
 
@@ -1308,7 +1308,7 @@ dns_nameservers = %(dns_nameservers)s
                     '[gce] Instance [%s] external IP [%s]' % (
                         instance_name, external_ip))
 
-                external_nic = Nics(ip=external_ip, boot=False)
+                external_nic = Nic(ip=external_ip, boot=False)
 
                 node.nics.append(external_nic)
 
@@ -1343,8 +1343,8 @@ dns_nameservers = %(dns_nameservers)s
 
     def __addActiveNodes(self, session: dict, dbSession: Session,
                          addNodesRequest: dict,
-                         dbHardwareProfile: HardwareProfiles,
-                         dbSoftwareProfile: SoftwareProfiles) -> List[Nodes]:
+                         dbHardwareProfile: HardwareProfile,
+                         dbSoftwareProfile: SoftwareProfile) -> List[Node]:
         """
         Create active nodes
         """
