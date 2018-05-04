@@ -54,10 +54,6 @@ def _installPackage(pkgname, retries=10):
         raise Exception('Error installing package [%s]' % (pkgname))
 
 
-def installEPEL():
-    runCommand('yum -y install epel-release')
-
-
 def _isPackageInstalled(pkgname):
     return (runCommand('rpm --query --quiet %s' % (pkgname)) == 0)
 
@@ -235,10 +231,6 @@ def main():
     vals = platform.dist()
 
     distro_maj_vers = vals[1].split('.')[0]
-
-    # Install EPEL repository
-    if not _isPackageInstalled('epel-release'):
-        installEPEL()
 
     if override_dns_domain:
         update_resolv_conf()
