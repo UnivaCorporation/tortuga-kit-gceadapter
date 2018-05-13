@@ -23,15 +23,15 @@ import subprocess
 import threading
 import time
 import urllib.parse
-from typing import List, Optional, Union
+from typing import List, NoReturn, Optional
 
 import gevent
 from gevent.queue import JoinableQueue
 from sqlalchemy.orm.session import Session
 
 import apiclient
-import httplib2
 from apiclient.discovery import build
+import httplib2
 from oauth2client.service_account import ServiceAccountCredentials
 from tortuga.db.models.hardwareProfile import HardwareProfile
 from tortuga.db.models.nic import Nic
@@ -74,7 +74,7 @@ class Gce(ResourceAdapter): \
     # avoid thrashing
     DEFAULT_SLEEP_TIME = 5
 
-    def __init__(self, addHostSession=None):
+    def __init__(self, addHostSession: Optional[str] = None):
         super(Gce, self).__init__(addHostSession=addHostSession)
 
         self.__session_map_lock = threading.Lock()
@@ -90,7 +90,7 @@ class Gce(ResourceAdapter): \
 
         return self.__running_on_gce
 
-    def __get_session(self, profile_name):
+    def __get_session(self, profile_name: str):
         """Return Google Compute session"""
 
         # Check 'session_map' for existing session
@@ -215,17 +215,18 @@ class Gce(ResourceAdapter): \
             raise UnsupportedOperation(
                 'Idle nodes not supported with GCE resource adapter')
 
-    def suspendActiveNode(self, nodeId): \
-            # pylint: disable=unused-argument,no-self-use
+    def suspendActiveNode(self, node: Node) -> bool:
+        self.getLogger().debug(
+            'suspendActiveNode(node=[{}]): not supported'.format(node.name))
 
         # Suspend is not currently supported for cloud-based instances
         return False
 
-    def idleActiveNode(self, dbNodes):
+    def idleActiveNode(self, nodes: List[Node]) -> str:
         # FYI... when this method is called, 'Node' are already marked idle
 
         # Iterate over list of 'Node' database objects.
-        for node in dbNodes:
+        for node in nodes:
             session = self.__get_session(
                 self.getResourceAdapterConfigProfileByNodeName(node.name))
 
@@ -399,14 +400,14 @@ class Gce(ResourceAdapter): \
         finally:
             self.__release_session()
 
-    def deleteNode(self, dbNodes):
+    def deleteNode(self, nodes: List[Node]) -> NoReturn:
         """
         Raises:
             CommandFailed
         """
 
         # Iterate over list of Node database objects
-        for node in dbNodes:
+        for node in nodes:
             self.getLogger().debug(
                 'deleteNode(): node=[%s]' % (node.name))
 
@@ -503,9 +504,9 @@ class Gce(ResourceAdapter): \
                 newSoftwareProfileName,
                 (newSoftwareProfileName != oldSoftwareProfileName))
 
-    def startupNode(self, nodeIds: List[int],
-                    remainingNodeList: Optional[Union[List[str], None]] = None,
-                    tmpBootMethod: Optional[Union[str, None]] = 'n'): \
+    def startupNode(self, nodes: List[Node],
+                    remainingNodeList: Optional[str] = None,
+                    tmpBootMethod: Optional[str] = 'n'): \
             # pylint: disable=unused-argument
         """TODO: not implemented"""
 
@@ -1670,11 +1671,14 @@ dns_nameservers = %(dns_nameservers)s
                     'Error deleting Compute Engine instance [%s]' % (
                         instance_name))
 
-    def rebootNode(self, dbNodes, bSoftReset=False): \
+    def rebootNode(self, nodes: List[Node],
+                   bSoftReset: Optional[bool] = False): \
             # pylint: disable=unused-argument
-        '''Reboot the given node'''
+        """
+        Reboot the given node
+        """
 
-        for node in dbNodes:
+        for node in nodes:
             if node.isIdle:
                 self.getLogger().info(
                     'Ignoring reboot request for idle node [%s]' % (
