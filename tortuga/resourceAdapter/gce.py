@@ -14,40 +14,39 @@
 
 # pylint: disable=no-member
 
-import os.path
-import urllib.parse
-import shlex
-import re
-import threading
-import random
-from typing import Optional, List
 import json
-import time
-import httplib2
+import os.path
+import random
+import re
+import shlex
 import subprocess
+import threading
+import time
+import urllib.parse
+from typing import List, Optional, Union
+
+import gevent
+from gevent.queue import JoinableQueue
 from sqlalchemy.orm.session import Session
 
 import apiclient
+import httplib2
 from apiclient.discovery import build
 from oauth2client.service_account import ServiceAccountCredentials
-
-from tortuga.resourceAdapter.resourceAdapter import ResourceAdapter
-from tortuga.os_utility import osUtility
-from tortuga.exceptions.configurationError import ConfigurationError
-from tortuga.exceptions.commandFailed import CommandFailed
-from tortuga.exceptions.invalidArgument import InvalidArgument
+from tortuga.db.models.hardwareProfile import HardwareProfile
 from tortuga.db.models.nic import Nic
 from tortuga.db.models.node import Node
-from tortuga.db.models.hardwareProfile import HardwareProfile
 from tortuga.db.models.softwareProfile import SoftwareProfile
-from tortuga.utility.cloudinit import dump_cloud_config_yaml, \
-    get_cloud_init_path
-from tortuga.resourceAdapter.utility import get_provisioning_nics, \
-    get_provisioning_hwprofilenetwork, get_provisioning_nic
-from tortuga.exceptions.unsupportedOperation import UnsupportedOperation
-import gevent
-from gevent.queue import JoinableQueue
+from tortuga.exceptions.commandFailed import CommandFailed
+from tortuga.exceptions.configurationError import ConfigurationError
+from tortuga.exceptions.invalidArgument import InvalidArgument
 from tortuga.exceptions.resourceNotFound import ResourceNotFound
+from tortuga.exceptions.unsupportedOperation import UnsupportedOperation
+from tortuga.os_utility import osUtility
+from tortuga.resourceAdapter.resourceAdapter import ResourceAdapter
+from tortuga.resourceAdapter.utility import get_provisioning_hwprofilenetwork
+from tortuga.utility.cloudinit import (dump_cloud_config_yaml,
+                                       get_cloud_init_path)
 
 
 API_VERSION = 'v1'
@@ -162,7 +161,8 @@ class Gce(ResourceAdapter): \
 
     def start(self, addNodesRequest, dbSession: Session,
               dbHardwareProfile: HardwareProfile,
-              dbSoftwareProfile: Optional[SoftwareProfile] = None) -> List[Node]: \
+              dbSoftwareProfile: Optional[SoftwareProfile] = None) \
+        -> List[Node]: \
             # pylint: disable=unused-argument
         """
         Raises:
@@ -179,12 +179,12 @@ class Gce(ResourceAdapter): \
         try:
             if dbSoftwareProfile is None or dbSoftwareProfile.isIdle:
                 # Add idle nodes
-                nodes: List[Nodes] = self.__addIdleNodes(
+                nodes = self.__addIdleNodes(
                     session, addNodesRequest, dbHardwareProfile,
                     dbSoftwareProfile)
             else:
                 # Add regular instance-backed (active) nodes
-                nodes: List[Nodes] = self.__addActiveNodes(
+                nodes = self.__addActiveNodes(
                     session, dbSession, addNodesRequest,
                     dbHardwareProfile, dbSoftwareProfile)
 
@@ -310,7 +310,7 @@ class Gce(ResourceAdapter): \
                 # with open(tmpfn, 'w') as fp:
                 #     fp.write(startup_script + '\n')
             else:
-                self.getLogger().warn(
+                self.getLogger().warning(
                     '[gce] Startup script template not specified.'
                     ' Compute Engine instance  [%s] will be started'
                     ' without startup script' % (instance_name))
@@ -388,7 +388,7 @@ class Gce(ResourceAdapter): \
             # Get IP address from instance
             node.nics[0].ip = self.__get_instance_internal_ip(instance)
 
-            ### TODO
+            # TODO
 
             self.getLogger().debug(
                 '[gce] activateIdleNode(): node [%s] activated'
@@ -500,8 +500,11 @@ class Gce(ResourceAdapter): \
                 newSoftwareProfileName,
                 (newSoftwareProfileName != oldSoftwareProfileName))
 
-    def startupNode(self, nodeIds, remainingNodeList=[], tmpBootMethod='n'):
-        pass
+    def startupNode(self, nodeIds: List[int],
+                    remainingNodeList: Optional[Union[List[str], None]] = None,
+                    tmpBootMethod: Optional[Union[str, None]] = 'n'): \
+            # pylint: disable=unused-argument
+        """TODO: not implemented"""
 
     def __validate_default_scopes(self, default_scopes):
         """
@@ -587,7 +590,7 @@ class Gce(ResourceAdapter): \
             errmsg = 'Keys [%s] are unrecognized by this resource adapter' % (
                 ' '.join(unknown_keys))
 
-            self.getLogger().warn('[gce] ' + errmsg)
+            self.getLogger().warning('[gce] ' + errmsg)
 
         # Validate configuration
         self._process_adapter_config(configDict)
@@ -676,8 +679,8 @@ class Gce(ResourceAdapter): \
             if 'vcpus' in configDict:
                 configDict['vcpus'] = int(configDict['vcpus'])
         except ValueError:
-                raise ConfigurationError(
-                    'Invalid/malformed value for \'vcpus\'')
+            raise ConfigurationError(
+                'Invalid/malformed value for \'vcpus\'')
 
         return configDict
 
@@ -779,7 +782,8 @@ class Gce(ResourceAdapter): \
         return session
 
     def __addIdleNodes(self, session, addNodesRequest,
-                       dbHardwareProfile, dbSoftwareProfile):
+                       dbHardwareProfile, dbSoftwareProfile): \
+            # pylint: disable=unused-argument
         """
         Create new nodes in idle state
 
@@ -833,7 +837,7 @@ class Gce(ResourceAdapter): \
         self.getLogger().debug('[gce] __getStartupScript()')
 
         if not os.path.exists(configDict['startup_script_template']):
-            self.getLogger().warn(
+            self.getLogger().warning(
                 '[gce] User data script template [%s] does not'
                 ' exist. Compute Engine instances will be started without'
                 ' user data' % (configDict['startup_script_template']))
@@ -972,7 +976,8 @@ dns_nameservers = %(dns_nameservers)s
                     if session['config']['dns_domain'] == dns_domain:
                         return fqdn
                 elif '.' in self.installer_public_hostname:
-                    dns_domain = self.installer_public_hostname.split('.', 1)[1]
+                    dns_domain = \
+                        self.installer_public_hostname.split('.', 1)[1]
 
                 hostname, _ = fqdn.split('.', 1)
 
@@ -1056,7 +1061,7 @@ dns_nameservers = %(dns_nameservers)s
             # with open(tmpfn, 'w') as fp:
             #     fp.write(startup_script + '\n')
         else:
-            self.getLogger().warn(
+            self.getLogger().warning(
                 '[gce] Startup script template not defined for hardware'
                 ' profile [%s]' % (node.hardwareprofile.name))
 
@@ -1650,7 +1655,7 @@ dns_nameservers = %(dns_nameservers)s
         except apiclient.errors.HttpError as ex:
             if ex.resp['status'] == '404':
                 # Specified instance not found; nothing we can do there...
-                self.getLogger().warn(
+                self.getLogger().warning(
                     '[gce] Instance [%s] not found' % (instance_name))
             else:
                 self.getLogger().debug(
@@ -1720,7 +1725,7 @@ dns_nameservers = %(dns_nameservers)s
                     if ex.resp['status'] == '404':
                         # Specified instance not found; nothing we can do
                         # there...
-                        self.getLogger().warn(
+                        self.getLogger().warning(
                             '[gce] Instance [%s] not found' % (instance_name))
                     else:
                         self.getLogger().debug(
