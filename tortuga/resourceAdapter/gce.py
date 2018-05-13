@@ -98,12 +98,12 @@ class Gce(ResourceAdapter): \
 
         if profile_name in self.__session_map:
             self.getLogger().debug(
-                '[gce] Found session for profile [%s]' % (profile_name))
+                'Found session for profile [%s]' % (profile_name))
 
             session = self.__session_map[profile_name]
         else:
             self.getLogger().debug(
-                '[gce] Initializing session for profile [%s]' % (
+                'Initializing session for profile [%s]' % (
                     profile_name))
 
             session = self.__init_session(profile_name)
@@ -117,7 +117,7 @@ class Gce(ResourceAdapter): \
         return session
 
     def __release_session(self):
-        self.getLogger().debug('[gce] Unlocking session lock')
+        self.getLogger().debug('Unlocking session lock')
 
         self.__session_lock.release()
 
@@ -140,7 +140,7 @@ class Gce(ResourceAdapter): \
                               'provisioning network'))
 
                 self.getLogger().error(
-                    '[gce] Error adding node(s): %s' % (logmsg))
+                    'Error adding node(s): %s' % (logmsg))
 
                 raise InvalidArgument(logmsg)
             elif not dbHardwareProfile.nics:
@@ -149,13 +149,13 @@ class Gce(ResourceAdapter): \
                               dbHardwareProfile.name))
 
                 self.getLogger().error(
-                    '[gce] Error adding node(s): %s' % (logmsg))
+                    'Error adding node(s): %s' % (logmsg))
 
                 raise InvalidArgument(logmsg)
 
             if dbHardwareProfile.location == 'remote-vpn':
                 raise InvalidArgument(
-                    '[gce] Conflicting options: hardware profile location'
+                    'Conflicting options: hardware profile location'
                     ' is \'%s\' and VPN is enabled' % (
                         dbHardwareProfile.location))
 
@@ -267,7 +267,7 @@ class Gce(ResourceAdapter): \
         """
 
         self.getLogger().debug(
-            '[gce] activateIdleNode(): node=[%s], softwareProfileName=[%s],'
+            'activateIdleNode(): node=[%s], softwareProfileName=[%s],'
             ' softwareProfileChanged=[%s]' % (
                 node.name, softwareProfileName, softwareProfileChanged))
 
@@ -311,7 +311,7 @@ class Gce(ResourceAdapter): \
                 #     fp.write(startup_script + '\n')
             else:
                 self.getLogger().warning(
-                    '[gce] Startup script template not specified.'
+                    'Startup script template not specified.'
                     ' Compute Engine instance  [%s] will be started'
                     ' without startup script' % (instance_name))
 
@@ -325,7 +325,7 @@ class Gce(ResourceAdapter): \
                 polling_interval=session['config']['sleeptime'])
 
             self.getLogger.debug(
-                '[gce] persistent disk creation result=[%s]' % (result))
+                'persistent disk creation result=[%s]' % (result))
 
             selfLink = result['targetLink']
 
@@ -378,7 +378,7 @@ class Gce(ResourceAdapter): \
                 # TODO: terminate instance
 
                 self.getLogger().error(
-                    '[gce] Timed out while attempting to activate'
+                    'Timed out while attempting to activate'
                     ' node [%s]' % (node.name))
 
                 self.nodeManager.idleNode(node.name)
@@ -391,7 +391,7 @@ class Gce(ResourceAdapter): \
             # TODO
 
             self.getLogger().debug(
-                '[gce] activateIdleNode(): node [%s] activated'
+                'activateIdleNode(): node [%s] activated'
                 ' successfully' % (node.name))
         finally:
             self.__release_session()
@@ -405,7 +405,7 @@ class Gce(ResourceAdapter): \
         # Iterate over list of Node database objects
         for node in dbNodes:
             self.getLogger().debug(
-                '[gce] deleteNode(): node=[%s]' % (node.name))
+                'deleteNode(): node=[%s]' % (node.name))
 
             session = self.__get_session(
                 self.getResourceAdapterConfigProfileByNodeName(node.name))
@@ -457,13 +457,13 @@ class Gce(ResourceAdapter): \
                 removedDiskNumber)
 
             self.getLogger().debug(
-                '[gce] Removing persistent disk [%s]' % (volume_name))
+                'Removing persistent disk [%s]' % (volume_name))
 
             self.sanApi.deleteDrive(node, removedDiskNumber)
 
     def __node_cleanup(self, node):
         self.getLogger().debug(
-            '[gce] __node_cleanup(): node=[%s]' % (node.name))
+            '__node_cleanup(): node=[%s]' % (node.name))
 
         if node.isIdle:
             # Idle node
@@ -484,7 +484,7 @@ class Gce(ResourceAdapter): \
                      newSoftwareProfileName):
         for node, oldSoftwareProfileName in nodeIdSoftwareProfileTuples:
             self.getLogger().debug(
-                '[gce] transferNode (node=[%s]): old software profile: %s,'
+                'transferNode (node=[%s]): old software profile: %s,'
                 ' software profile in node: %s, '
                 ' new software profile: %s' % (
                     node.name, oldSoftwareProfileName,
@@ -519,7 +519,7 @@ class Gce(ResourceAdapter): \
 
             if not urlResult.scheme.lower() in ['http', 'https']:
                 self.getLogger().error(
-                    '[gce] Invalid URL specified in default_scopes:'
+                    'Invalid URL specified in default_scopes:'
                     ' \"%s\" must be a properly formatted URL' % (url))
 
                 raise ConfigurationError(
@@ -562,14 +562,14 @@ class Gce(ResourceAdapter): \
             errmsg = 'Required configuration setting(s) [%s] are missing' % (
                 ' '.join(missing_keys))
 
-            self.getLogger().error('[gce] ' + errmsg)
+            self.getLogger().error('' + errmsg)
 
             raise ConfigurationError(errmsg)
 
         if 'key' not in configDict and 'json_keyfile' not in configDict:
             errmsg = '\'key\' or \'json_keyfile\' must be configured'
 
-            self.getLogger().error('[gce] ' + errmsg)
+            self.getLogger().error('' + errmsg)
 
             raise ConfigurationError(errmsg)
 
@@ -577,7 +577,7 @@ class Gce(ResourceAdapter): \
             errmsg = ('\'service_account_email\' must be configured when'
                       ' p12 key for authentication')
 
-            self.getLogger().error('[gce] ' + errmsg)
+            self.getLogger().error('' + errmsg)
 
             raise ConfigurationError(errmsg)
 
@@ -590,7 +590,7 @@ class Gce(ResourceAdapter): \
             errmsg = 'Keys [%s] are unrecognized by this resource adapter' % (
                 ' '.join(unknown_keys))
 
-            self.getLogger().warning('[gce] ' + errmsg)
+            self.getLogger().warning('' + errmsg)
 
         # Validate configuration
         self._process_adapter_config(configDict)
@@ -639,7 +639,7 @@ class Gce(ResourceAdapter): \
                 if 'sleeptime' in configDict else Gce.DEFAULT_SLEEP_TIME
         except ValueError:
             self.getLogger().error(
-                '[gce] Malformed value for \'sleeptime\'. Using default %d'
+                'Malformed value for \'sleeptime\'. Using default %d'
                 ' seconds' % (Gce.DEFAULT_SLEEP_TIME))
 
             configDict['sleeptime'] = Gce.DEFAULT_SLEEP_TIME
@@ -696,7 +696,7 @@ class Gce(ResourceAdapter): \
         if not os.path.exists(keyPath):
             errmsg = 'Authentication key file [%s] does not exist' % (keyPath)
 
-            self.getLogger().error('[gce] ' + errmsg)
+            self.getLogger().error('' + errmsg)
 
             raise ConfigurationError(errmsg)
 
@@ -722,7 +722,7 @@ class Gce(ResourceAdapter): \
                 errmsg = ('Tag [%s] does not match regex'
                           '\'[a-zA-Z0-9-_]{1,128}\'' % (tag))
 
-                self.getLogger().error('[gce] ' + errmsg)
+                self.getLogger().error('' + errmsg)
 
                 raise ConfigurationError(errmsg)
 
@@ -751,7 +751,7 @@ class Gce(ResourceAdapter): \
                     errmsg = ('Metadata key [%s] must match regex'
                               ' \'[a-zA-Z0-9-_]{1,128}\'' % (key))
 
-                    self.getLogger().error('[gce] ' + errmsg)
+                    self.getLogger().error('' + errmsg)
 
                     raise ConfigurationError(errmsg)
 
@@ -791,7 +791,7 @@ class Gce(ResourceAdapter): \
             UnsupportedOperation
         """
 
-        self.getLogger().debug('[gce] __addIdleNodes()')
+        self.getLogger().debug('__addIdleNodes()')
 
         added_nodes = []
 
@@ -823,7 +823,7 @@ class Gce(ResourceAdapter): \
             added_nodes.append(node)
 
             self.getLogger().debug(
-                '[gce] Created idle Google Compute Engine node [%s]' % (
+                'Created idle Google Compute Engine node [%s]' % (
                     node.name))
 
         return added_nodes
@@ -834,11 +834,11 @@ class Gce(ResourceAdapter): \
         VPN, install Puppet, and the bootstrap the instance.
         """
 
-        self.getLogger().debug('[gce] __getStartupScript()')
+        self.getLogger().debug('__getStartupScript()')
 
         if not os.path.exists(configDict['startup_script_template']):
             self.getLogger().warning(
-                '[gce] User data script template [%s] does not'
+                'User data script template [%s] does not'
                 ' exist. Compute Engine instances will be started without'
                 ' user data' % (configDict['startup_script_template']))
 
@@ -916,7 +916,7 @@ dns_nameservers = %(dns_nameservers)s
             NetworkNotFound
         """
 
-        self.getLogger().debug('[gce] __createNodes()')
+        self.getLogger().debug('__createNodes()')
 
         nodeCount = addNodesRequest['count'] \
             if 'count' in addNodesRequest else 1
@@ -1000,7 +1000,7 @@ dns_nameservers = %(dns_nameservers)s
             for error in result['error']['errors'])
 
         self.getLogger().error(
-            '[gce] Error launching instance [%s]: ' % (instance_name) + logmsg)
+            'Error launching instance [%s]: ' % (instance_name) + logmsg)
 
         raise CommandFailed(
             'Google Compute Engine reported error: \"%s\"' % (excmsg))
@@ -1014,7 +1014,7 @@ dns_nameservers = %(dns_nameservers)s
 
         if not os.path.exists(dstdir):
             self.getLogger().debug(
-                '[gce] Creating cloud-init directory [%s]' % (dstdir))
+                'Creating cloud-init directory [%s]' % (dstdir))
 
             os.makedirs(dstdir)
 
@@ -1062,7 +1062,7 @@ dns_nameservers = %(dns_nameservers)s
             #     fp.write(startup_script + '\n')
         else:
             self.getLogger().warning(
-                '[gce] Startup script template not defined for hardware'
+                'Startup script template not defined for hardware'
                 ' profile [%s]' % (node.hardwareprofile.name))
 
         if session['config']['override_dns_domain']:
@@ -1080,7 +1080,7 @@ dns_nameservers = %(dns_nameservers)s
             'preemptible' in addNodesRequest['extra_args']
 
         self.getLogger().debug(
-            '[gce] __launch_instances():'
+            '__launch_instances():'
             ' preemptible={0}'.format(preemptible))
 
         for node_request in node_requests:
@@ -1123,7 +1123,7 @@ dns_nameservers = %(dns_nameservers)s
                     session, node_request['instance_name'], metadata,
                     persistent_disks=persistent_disks, preemptible=preemptible)
 
-                # self.getLogger().debug('[gce] Instance [%s] response: %s' % (
+                # self.getLogger().debug('Instance [%s] response: %s' % (
                 #     node_request['instance_name'], node_request['response']))
             except Exception:
                 self.getLogger().error(
@@ -1179,7 +1179,7 @@ dns_nameservers = %(dns_nameservers)s
             if addedDiskNumber > 1:
                 # Create persistent disk
                 self.getLogger().debug(
-                    '[gce] Creating data disk: (%s, %s, %s Gb)' % (
+                    'Creating data disk: (%s, %s, %s Gb)' % (
                         node.name, volName, sizeGb))
 
                 response = self.__create_persistent_disk(
@@ -1225,13 +1225,13 @@ dns_nameservers = %(dns_nameservers)s
 
                 errmsg = 'Google Compute Engine error: \"%s\"' % (logmsg)
 
-                self.getLogger().error('[gce] %s' % (errmsg))
+                self.getLogger().error('%s' % (errmsg))
 
                 pending_node_request['status'] = 'error'
                 pending_node_request['message'] = logmsg
         except Exception as exc:
             self.getLogger().exception(
-                '[gce] _blocking_call() failed on instance [%s]' % (
+                '_blocking_call() failed on instance [%s]' % (
                     pending_node_request['instance_name']))
 
             pending_node_request['status'] = 'error'
@@ -1252,7 +1252,7 @@ dns_nameservers = %(dns_nameservers)s
         Raises:
             CommandFailed
         """
-        self.getLogger().debug('[gce] __wait_for_instances()')
+        self.getLogger().debug('__wait_for_instances()')
 
         queue = JoinableQueue()
 
@@ -1276,7 +1276,7 @@ dns_nameservers = %(dns_nameservers)s
         for node_request in node_request_queue:
             if node_request['status'] == 'error':
                 self.getLogger().error(
-                    '[gce] Message: {0}'.format(node_request['message']))
+                    'Message: {0}'.format(node_request['message']))
 
                 raise CommandFailed(
                     'Fatal error launching one or more instances')
@@ -1304,13 +1304,13 @@ dns_nameservers = %(dns_nameservers)s
 
                 if not external_ip:
                     self.getLogger().debug(
-                        '[gce] Instance [%s] does not have an'
+                        'Instance [%s] does not have an'
                         ' external IP' % (instance_name))
 
                     return
 
                 self.getLogger().debug(
-                    '[gce] Instance [%s] external IP [%s]' % (
+                    'Instance [%s] external IP [%s]' % (
                         instance_name, external_ip))
 
                 external_nic = Nic(ip=external_ip, boot=False)
@@ -1354,13 +1354,13 @@ dns_nameservers = %(dns_nameservers)s
         Create active nodes
         """
 
-        self.getLogger().debug('[gce] __addActiveNodes()')
+        self.getLogger().debug('__addActiveNodes()')
 
         # Always default to 1 node if 'count' is missing
         count = addNodesRequest['count'] if 'count' in addNodesRequest else 1
 
         self.getLogger().info(
-            '[gce] Creating %d node(s) for mapping to Compute Engine'
+            'Creating %d node(s) for mapping to Compute Engine'
             ' instance(s)' % (count))
 
         # Create node entries in the database
@@ -1372,7 +1372,7 @@ dns_nameservers = %(dns_nameservers)s
         dbSession.commit()
 
         self.getLogger().debug(
-            '[gce] Allocated node(s): %s' % (
+            'Allocated node(s): %s' % (
                 ' '.join([tmpnode.name for tmpnode in nodes])))
 
         try:
@@ -1416,13 +1416,13 @@ dns_nameservers = %(dns_nameservers)s
             if node_request['status'] != 'success':
                 if 'instance_name' in node_request:
                     self.getLogger().error(
-                        '[gce] Cleaning up failed instance [%s]'
+                        'Cleaning up failed instance [%s]'
                         ' (node [%s])' % (
                             node_request['instance_name'],
                             node_request['node'].name))
                 else:
                     self.getLogger().error(
-                        '[gce] Cleaning up node [%s]' % (node_request['node']))
+                        'Cleaning up node [%s]' % (node_request['node']))
 
                 self.__node_cleanup(node_request['node'])
 
@@ -1441,7 +1441,7 @@ dns_nameservers = %(dns_nameservers)s
             warnmsg = ('only %d of %d requested instances launched'
                        ' successfully' % (completed, count))
 
-            self.getLogger().warning('[gce] %s' % (warnmsg))
+            self.getLogger().warning('%s' % (warnmsg))
 
         return result
 
@@ -1467,7 +1467,7 @@ dns_nameservers = %(dns_nameservers)s
                     ('sshKeys', '%s:' % (default_ssh_user) + fp.read()))
         else:
             self.getLogger().info(
-                '[gce] Public SSH key (%s) not found' % (fn))
+                'Public SSH key (%s) not found' % (fn))
 
         metadata.append(('tortuga_installer_public_hostname',
                          self.installer_public_hostname))
@@ -1506,7 +1506,7 @@ dns_nameservers = %(dns_nameservers)s
         # contain settings, but this could easily be mocked.
 
         self.getLogger().debug(
-            '[gce] __launch_instance(): instance_name=[%s]' % (instance_name))
+            '__launch_instance(): instance_name=[%s]' % (instance_name))
 
         connection = session['connection']
 
@@ -1603,7 +1603,7 @@ dns_nameservers = %(dns_nameservers)s
                     error_resp = json.loads(ex.content)
 
                     self.getLogger().error(
-                        '[gce] Unable to get Compute Engine instance %s'
+                        'Unable to get Compute Engine instance %s'
                         ' (code: %s, message: %s)' % (
                             instance_name,
                             error_resp['error']['code'],
@@ -1611,7 +1611,7 @@ dns_nameservers = %(dns_nameservers)s
                 except ValueError:
                     # Malformed JSON in response
                     self.getLogger().error(
-                        '[gce] Unable to get Compute Engine instance %s'
+                        'Unable to get Compute Engine instance %s'
                         ' (JSON parsing error)' % (instance_name))
 
             # If an exception was raised while attempting to get the instance,
@@ -1628,7 +1628,7 @@ dns_nameservers = %(dns_nameservers)s
         """
 
         self.getLogger().debug(
-            '[gce] __deleteInstance(): instance_name=[%s]' % (
+            '__deleteInstance(): instance_name=[%s]' % (
                 instance_name))
 
         project_arg = project \
@@ -1644,7 +1644,7 @@ dns_nameservers = %(dns_nameservers)s
                 http=session['connection'].http)
 
             self.getLogger().debug(
-                '[gce] __deleteInstance(): initial_response=[%s]' % (
+                '__deleteInstance(): initial_response=[%s]' % (
                     initial_response))
 
             # Wait for instance to be deleted
@@ -1656,10 +1656,10 @@ dns_nameservers = %(dns_nameservers)s
             if ex.resp['status'] == '404':
                 # Specified instance not found; nothing we can do there...
                 self.getLogger().warning(
-                    '[gce] Instance [%s] not found' % (instance_name))
+                    'Instance [%s] not found' % (instance_name))
             else:
                 self.getLogger().debug(
-                    '[gce] __deleteInstance(): ex.resp=[%s],'
+                    '__deleteInstance(): ex.resp=[%s],'
                     ' ex.content=[%s]' % (ex.resp, ex.content))
 
                 raise CommandFailed(
@@ -1673,13 +1673,13 @@ dns_nameservers = %(dns_nameservers)s
         for node in dbNodes:
             if node.isIdle:
                 self.getLogger().info(
-                    '[gce] Ignoring reboot request for idle node [%s]' % (
+                    'Ignoring reboot request for idle node [%s]' % (
                         node.name))
 
                 continue
 
             self.getLogger().debug(
-                '[gce] rebootNode(): node=[%s]' % (node.name))
+                'rebootNode(): node=[%s]' % (node.name))
 
             session = self.__get_session(
                 self.getResourceAdapterConfigProfileByNodeName(node.name))
@@ -1710,7 +1710,7 @@ dns_nameservers = %(dns_nameservers)s
                         http=session['connection'].http)
 
                     self.getLogger().debug(
-                        '[gce] rebootNode(): initial_response=[%s]' % (
+                        'rebootNode(): initial_response=[%s]' % (
                             initial_response))
 
                     # Wait for instance to be rebooted
@@ -1720,16 +1720,16 @@ dns_nameservers = %(dns_nameservers)s
                         polling_interval=session['config']['sleeptime'])
 
                     self.getLogger().debug(
-                        '[gce] Instance [%s] rebooted' % (node.name))
+                        'Instance [%s] rebooted' % (node.name))
                 except apiclient.errors.HttpError as ex:
                     if ex.resp['status'] == '404':
                         # Specified instance not found; nothing we can do
                         # there...
                         self.getLogger().warning(
-                            '[gce] Instance [%s] not found' % (instance_name))
+                            'Instance [%s] not found' % (instance_name))
                     else:
                         self.getLogger().debug(
-                            '[gce] rebootNode(): ex.resp=[%s],'
+                            'rebootNode(): ex.resp=[%s],'
                             ' ex.content=[%s]' % (ex.resp, ex.content))
 
                         raise CommandFailed(
