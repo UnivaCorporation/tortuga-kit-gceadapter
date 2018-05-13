@@ -5,3 +5,4 @@ man/**/*.8
 **/puppet_modules/**/pkg/
 __pycache__/
 .mypy_cache/
+.pytest_cache/
