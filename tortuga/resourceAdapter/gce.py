@@ -30,8 +30,8 @@ from gevent.queue import JoinableQueue
 from sqlalchemy.orm.session import Session
 
 import apiclient
-from apiclient.discovery import build
 import httplib2
+from apiclient.discovery import build
 from oauth2client.service_account import ServiceAccountCredentials
 from tortuga.db.models.hardwareProfile import HardwareProfile
 from tortuga.db.models.nic import Nic
@@ -284,12 +284,6 @@ class Gce(ResourceAdapter): \
             if instance_cache:
                 # According to the instance cache, this node is reported to
                 # be running.
-                # self.__delete_node(session, node)
-
-                # TODO: unable to proceed if node cannot be killed
-
-                # Mark node
-                # self.nodeManager.idleNode(node.name)
 
                 raise CommandFailed(
                     'Compute Engine instance [%s] is already running' % (
@@ -1382,7 +1376,7 @@ dns_nameservers = %(dns_nameservers)s
             self.getLogger().exception('Error building node request map')
 
             for node in nodes:
-                self.__delete_node(dbSession, node)
+                dbSession.delete(node)
 
                 self.__node_cleanup(node)
 
@@ -1427,7 +1421,7 @@ dns_nameservers = %(dns_nameservers)s
 
                 self.__node_cleanup(node_request['node'])
 
-                self.__delete_node(dbSession, node_request['node'])
+                dbSession.delete(node_request['node'])
             else:
                 result.append(node_request['node'])
 
@@ -1445,14 +1439,6 @@ dns_nameservers = %(dns_nameservers)s
             self.getLogger().warning('%s' % (warnmsg))
 
         return result
-
-    def __delete_node(self, session, node): \
-            # pylint: disable=no-self-use
-
-        for nic in node.nics:
-            session.delete(nic)
-
-        session.delete(node)
 
     def __get_metadata(self, session):
         metadata = []
