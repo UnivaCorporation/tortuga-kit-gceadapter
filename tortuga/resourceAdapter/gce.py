@@ -23,23 +23,25 @@ import subprocess
 import threading
 import time
 import urllib.parse
-from typing import List, NoReturn, Optional
+from typing import Any, Dict, List, NoReturn, Optional, Tuple
 
 import apiclient
 import gevent
-import httplib2
-from apiclient.discovery import build
+import googleapiclient.discovery
 from gevent.queue import JoinableQueue
-from oauth2client.service_account import ServiceAccountCredentials
+from google.oauth2 import service_account
 from sqlalchemy.orm.session import Session
+from tortuga.db.dbManager import DbManager
 from tortuga.db.models.hardwareProfile import HardwareProfile
+from tortuga.db.models.instanceMapping import InstanceMapping
+from tortuga.db.models.instanceMetadata import InstanceMetadata
 from tortuga.db.models.nic import Nic
 from tortuga.db.models.node import Node
 from tortuga.db.models.softwareProfile import SoftwareProfile
+from tortuga.db.nodesDbHandler import NodesDbHandler
 from tortuga.exceptions.commandFailed import CommandFailed
 from tortuga.exceptions.configurationError import ConfigurationError
 from tortuga.exceptions.invalidArgument import InvalidArgument
-from tortuga.exceptions.resourceNotFound import ResourceNotFound
 from tortuga.exceptions.unsupportedOperation import UnsupportedOperation
 from tortuga.os_utility import osUtility
 from tortuga.resourceAdapter.resourceAdapter import ResourceAdapter
@@ -179,7 +181,7 @@ class Gce(ResourceAdapter): \
             if dbSoftwareProfile is None or dbSoftwareProfile.isIdle:
                 # Add idle nodes
                 nodes = self.__addIdleNodes(
-                    session, addNodesRequest, dbHardwareProfile,
+                    session, dbSession, addNodesRequest, dbHardwareProfile,
                     dbSoftwareProfile)
             else:
                 # Add regular instance-backed (active) nodes
@@ -227,25 +229,15 @@ class Gce(ResourceAdapter): \
         # Iterate over list of 'Node' database objects.
         for node in nodes:
             session = self.__get_session(
-                self.getResourceAdapterConfigProfileByNodeName(node.name))
+                node.instance.resource_adapter_configuration.name
+            )
 
             try:
-                instance_name = get_instance_name_from_host_name(node.name)
-
-                instance_cache = self.instanceCacheGet(node.name)
-
-                project = instance_cache['project'] \
-                    if 'project' in instance_cache else None
-                zone = instance_cache['zone'] \
-                    if 'zone' in instance_cache else None
-
-                self.__deleteInstance(session,
-                                      instance_name,
-                                      project=project,
-                                      zone=zone)
+                self.__deleteInstance(session, node)
 
                 # Update instance cache
-                self.instanceCacheDelete(node.name)
+                if node.instance:
+                    node.instance = None
 
                 node.nics[0].ip = None
 
@@ -272,15 +264,14 @@ class Gce(ResourceAdapter): \
                 node.name, softwareProfileName, softwareProfileChanged))
 
         session = self.__get_session(
-            self.getResourceAdapterConfigProfileByNodeName(node.name))
+            node.instance.resource_adapter_configuration.name
+        )
 
         try:
             configDict = session['config']
 
             # Sanity checking... ensure node is actually idle
-            instance_cache = self.instanceCacheGet(node.name)
-
-            if instance_cache:
+            if node.instance:
                 # According to the instance cache, this node is reported to
                 # be running.
 
@@ -314,7 +305,7 @@ class Gce(ResourceAdapter): \
                 session, instance_name)
 
             result = _blocking_call(
-                session['connection'].svc, session['connection'].http,
+                session['connection'].svc,
                 configDict['project'], response,
                 polling_interval=session['config']['sleeptime'])
 
@@ -327,7 +318,7 @@ class Gce(ResourceAdapter): \
                 session, instance_name, metadata, persistent_disks=selfLink)
 
             result = _blocking_call(
-                session['connection'].svc, session['connection'].http,
+                session['connection'].svc,
                 configDict['project'], response,
                 polling_interval=session['config']['sleeptime'])
 
@@ -336,12 +327,14 @@ class Gce(ResourceAdapter): \
                 self.__process_error_response(instance_name, result)
 
             # Instance was launched successfully
-
-            # Update instance cache
-            self.instanceCacheSet(node.name, metadata={
-                'instance': instance_name,
-                'zone': response['zone'].split('/')[-1],
-            })
+            node.instance = InstanceMapping(
+                instance=instance_name,
+                instance_metadata=[
+                    InstanceMetadata(
+                        key='zone', value=response['zone'].split('/')[-1],
+                    )
+                ]
+            )
 
             bTimedOut = False
 
@@ -399,36 +392,37 @@ class Gce(ResourceAdapter): \
             CommandFailed
         """
 
-        # Iterate over list of Node database objects
-        for node in nodes:
-            self.getLogger().debug(
-                'deleteNode(): node=[%s]' % (node.name))
+        with DbManager().session() as session:
+            # Iterate over list of Node database objects
+            for node in nodes:
+                self.getLogger().debug(
+                    'deleteNode(): node=[%s]' % (node.name))
 
-            session = self.__get_session(
-                self.getResourceAdapterConfigProfileByNodeName(node.name))
+                gce_session = self.__get_session(
+                    node.instance.resource_adapter_configuration.name)
 
-            try:
-                instance_name = get_instance_name_from_host_name(node.name)
+                try:
+                    self.__deleteInstance(gce_session, node)
 
-                instance_cache = self.instanceCacheGet(node.name)
+                    self.__node_cleanup(node)
 
-                project = instance_cache['project'] \
-                    if instance_cache and 'project' in instance_cache \
-                    else None
+                    # Update SAN API
+                    self.__process_deleted_disk_changes(node)
+                finally:
+                    self.__release_session()
 
-                zone = instance_cache['zone'] \
-                    if instance_cache and 'zone' in instance_cache else \
-                    None
+    def __get_project_and_zone_metadata(self, node: Node) -> Tuple[str, str]:
+        project = None
+        zone = None
 
-                self.__deleteInstance(
-                    session, instance_name, project=project, zone=zone)
+        # iterate over instance metadata
+        for md in node.instance.instance_metadata:
+            if md.key == 'project':
+                project = md.value
+            elif md.key == 'zone':
+                zone = md.value
 
-                self.__node_cleanup(node)
-
-                # Update SAN API
-                self.__process_deleted_disk_changes(node)
-            finally:
-                self.__release_session()
+        return project, zone
 
     def __process_deleted_disk_changes(self, node):
         """Remove persistent disks from SAN API 'catalog'.
@@ -458,7 +452,7 @@ class Gce(ResourceAdapter): \
 
             self.sanApi.deleteDrive(node, removedDiskNumber)
 
-    def __node_cleanup(self, node):
+    def __node_cleanup(self, node: Node):
         self.getLogger().debug(
             '__node_cleanup(): node=[%s]' % (node.name))
 
@@ -470,9 +464,6 @@ class Gce(ResourceAdapter): \
         # Active node
         bhm = osUtility.getOsObjectFactory().getOsBootHostManager()
         bhm.deleteNodeCleanup(node)
-
-        # Update instance cache
-        self.instanceCacheDelete(node.name)
 
         # Update SAN API
         self.__process_deleted_disk_changes(node)
@@ -744,7 +735,7 @@ class Gce(ResourceAdapter): \
                     errmsg = ('Metadata key [%s] must match regex'
                               ' \'[a-zA-Z0-9-_]{1,128}\'' % (key))
 
-                    self.getLogger().error('' + errmsg)
+                    self.getLogger().error(errmsg)
 
                     raise ConfigurationError(errmsg)
 
@@ -769,7 +760,7 @@ class Gce(ResourceAdapter): \
 
         return session
 
-    def __addIdleNodes(self, session, addNodesRequest,
+    def __addIdleNodes(self, session, dbSession: Session, addNodesRequest,
                        dbHardwareProfile, dbSoftwareProfile): \
             # pylint: disable=unused-argument
         """
@@ -803,10 +794,12 @@ class Gce(ResourceAdapter): \
                 None, addNodeRequest, dbHardwareProfile,
                 dbSoftwareProfile)
 
-            self.instanceCacheSet(node.name, metadata={
-                'resource_adapter_configuration':
+            node.instance = InstanceMapping(
+                resource_adapter_configuration=self.load_resource_adapter_config(
+                    dbSession,
                     addNodesRequest['resource_adapter_configuration']
-            })
+                )
+            )
 
             added_nodes.append(node)
 
@@ -1058,8 +1051,8 @@ dns_nameservers = %(dns_nameservers)s
 
         return metadata
 
-    def __launch_instances(self, session, node_requests, addNodesRequest,
-                           pre_launch_callback=None):
+    def __launch_instances(self, session, dbSession: Session, node_requests,
+                           addNodesRequest, pre_launch_callback=None):
         # Launch Google Compute Engine instance for each node request
 
         # 'preemptible' is passed through addNodesRequest as
@@ -1128,15 +1121,18 @@ dns_nameservers = %(dns_nameservers)s
                 raise
 
             # Update persistent mapping of node -> instance
-            metadata = {
-                'instance': node_request['instance_name'],
-                'zone': node_request['response']['zone'].split('/')[-1],
-            }
-            if 'resource_adapter_configuration' in addNodesRequest:
-                metadata['resource_adapter_configuration'] = \
-                    addNodesRequest['resource_adapter_configuration']
-            self.instanceCacheSet(
-                node_request['node'].name, metadata=metadata
+            node_request['node'].instance = InstanceMapping(
+                instance=node_request['instance_name'],
+                instance_metadata=[
+                    InstanceMetadata(
+                        key='zone',
+                        value=node_request['response']['zone'].split('/')[-1]
+                    ),
+                ],
+                resource_adapter_configuration=self.load_resource_adapter_config(
+                    dbSession,
+                    addNodesRequest.get('resource_adapter_configuration')
+                )
             )
 
         # Wait for instances to launch
@@ -1183,7 +1179,6 @@ dns_nameservers = %(dns_nameservers)s
                 # TODO: check result
                 result = _blocking_call(
                     session['connection'].svc,
-                    session['connection'].http,
                     session['config']['project'],
                     response,
                     polling_interval=session['config']['sleeptime'])
@@ -1387,7 +1382,7 @@ dns_nameservers = %(dns_nameservers)s
         # Launch instances
         try:
             self.__launch_instances(
-                session, node_request_queue, addNodesRequest)
+                session, dbSession, node_request_queue, addNodesRequest)
         except Exception:
             # self.getLogger().exception('Error launching instances')
 
@@ -1468,24 +1463,21 @@ dns_nameservers = %(dns_nameservers)s
 
         return metadata
 
-    def __create_persistent_disk(self, session, volume_name, size_in_Gb): \
-            # pylint: disable=no-self-use
-        disk_resource = {
-            'kind': 'compute#disk',
-            'name': volume_name,
-            'sizeGb': size_in_Gb,
-        }
-
-        connection = session['connection']
-
-        config = session['config']
+    def __create_persistent_disk(self, session, volume_name: str,
+                                 size_in_Gb: int) -> None:
+        self.getLogger.debug(
+            f'Creating persistent disk [{volume_name}] (size [{size_in_Gb}])')
 
         # Create the instance
-        request = connection.svc.disks().insert(
-            project=config['project'], body=disk_resource, zone=config['zone'])
-
-        # TODO: this execute() call can raise exceptions
-        return request.execute(http=connection.http)
+        session['connection'].svc.disks().insert(
+            project=session['config']['project'],
+            body={
+                'kind': 'compute#disk',
+                'name': volume_name,
+                'sizeGb': size_in_Gb,
+            },
+            zone=session['config']['zone']
+        ).execute()
 
     def __launch_instance(self, session, instance_name, metadata,
                           persistent_disks=None, **kwargs):
@@ -1566,22 +1558,21 @@ dns_nameservers = %(dns_nameservers)s
         }
 
         # Create the instance
-        request = connection.svc.instances().insert(
-            project=config['project'], body=instance, zone=config['zone'])
-
-        # TODO: this execute() call can raise exceptions
-        return request.execute(http=connection.http)
+        return connection.svc.instances().insert(
+            project=config['project'],
+            body=instance,
+            zone=config['zone']
+        ).execute()
 
     def __getInstance(self, session, instance_name):
         connection = session['connection']
 
         try:
-            request = connection.svc.instances().get(
+            return connection.svc.instances().get(
                 project=session['config']['project'],
                 zone=session['config']['zone'],
-                instance=instance_name)
-
-            response = request.execute(http=connection.http)
+                instance=instance_name
+            ).execute()
         except apiclient.errors.HttpError as ex:
             # We can safely ignore a simple 404 error indicating the instance
             # does not exist.
@@ -1608,28 +1599,32 @@ dns_nameservers = %(dns_nameservers)s
 
         return response
 
-    def __deleteInstance(self, session, instance_name, project=None,
-                         zone=None):
+    def __deleteInstance(self, session, node: Node):
         """
         Raises:
             CommandFailed
         """
 
+        instance_name = get_instance_name_from_host_name(node.name)
+
         self.getLogger().debug(
             '__deleteInstance(): instance_name=[%s]' % (
                 instance_name))
+
+        project, zone = self.__get_project_and_zone_metadata(node)
 
         project_arg = project \
             if project is not None else session['config']['project']
 
         zone_arg = zone if zone is not None else session['config']['zone']
 
-        request = session['connection'].svc.instances().delete(
-            project=project_arg, zone=zone_arg, instance=instance_name)
-
         try:
-            initial_response = request.execute(
-                http=session['connection'].http)
+            initial_response = \
+                session['connection'].svc.instances().delete(
+                    project=project_arg,
+                    zone=zone_arg,
+                    instance=instance_name
+                ).execute()
 
             self.getLogger().debug(
                 '__deleteInstance(): initial_response=[%s]' % (
@@ -1637,7 +1632,7 @@ dns_nameservers = %(dns_nameservers)s
 
             # Wait for instance to be deleted
             # _blocking_call(
-            #     session['connection'].svc, session['connection'].http,
+            #     session['connection'].svc,
             #     session['config']['project'], initial_response,
             #     polling_interval=session['config']['sleeptime'])
         except apiclient.errors.HttpError as ex:
@@ -1672,33 +1667,30 @@ dns_nameservers = %(dns_nameservers)s
             self.getLogger().debug(
                 'rebootNode(): node=[%s]' % (node.name))
 
-            session = self.__get_session(
-                self.getResourceAdapterConfigProfileByNodeName(node.name))
+            gce_session = self.__get_session(
+                node.instance.resource_adapter_configuration.name
+            )
 
             try:
                 instance_name = get_instance_name_from_host_name(node.name)
 
-                instance_cache = self.instanceCacheGet(node.name)
-
-                project = instance_cache['project'] \
-                    if instance_cache and 'project' in instance_cache else \
-                    None
-                zone = instance_cache['zone'] \
-                    if instance_cache and 'zone' in instance_cache else None
+                project, zone = self.__get_project_and_zone_metadata(
+                    node
+                )
 
                 project_arg = project \
-                    if project is not None else session['config']['project']
+                    if project is not None else \
+                    gce_session['config']['project']
 
                 zone_arg = zone if zone is not None else \
-                    session['config']['zone']
-
-                request = session['connection'].svc.instances().reset(
-                    project=project_arg, zone=zone_arg,
-                    instance=instance_name)
+                    gce_session['config']['zone']
 
                 try:
-                    initial_response = request.execute(
-                        http=session['connection'].http)
+                    initial_response = \
+                        gce_session['connection'].svc.instances().reset(
+                            project=project_arg, zone=zone_arg,
+                            instance=instance_name
+                        ).execute()
 
                     self.getLogger().debug(
                         'rebootNode(): initial_response=[%s]' % (
@@ -1706,12 +1698,14 @@ dns_nameservers = %(dns_nameservers)s
 
                     # Wait for instance to be rebooted
                     _blocking_call(
-                        session['connection'].svc, session['connection'].http,
-                        session['config']['project'], initial_response,
-                        polling_interval=session['config']['sleeptime'])
+                        gce_session['connection'].svc,
+                        gce_session['config']['project'],
+                        initial_response,
+                        polling_interval=session['config']['sleeptime']
+                    )
 
                     self.getLogger().debug(
-                        'Instance [%s] rebooted' % (node.name))
+                        f'Instance [{node.name}] rebooted')
                 except apiclient.errors.HttpError as ex:
                     if ex.resp['status'] == '404':
                         # Specified instance not found; nothing we can do
@@ -1743,15 +1737,10 @@ dns_nameservers = %(dns_nameservers)s
         :returntype: int
         """
 
-        try:
-            instance_cache = self.instanceCacheGet(name)
-        except ResourceNotFound:
-            return 1
-
-        configDict = self.getResourceAdapterConfig(
-            sectionName=instance_cache['resource_adapter_configuration']
-            if 'resource_adapter_configuration' in instance_cache else
-            None)
+        with DbManager().session() as session:
+            configDict = self.get_node_resource_adapter_config(
+                NodesDbHandler().getNode(session, name)
+            )
 
         if 'vcpus' in configDict:
             return configDict['vcpus']
@@ -1760,11 +1749,9 @@ dns_nameservers = %(dns_nameservers)s
 
 
 class GoogleComputeEngine(object):
-    def __init__(self, svc=None, http=None):
+    def __init__(self, svc=None):
         self._svc = None
-        self._http = None
         self.svc = svc
-        self.http = http
 
     @property
     def svc(self):
@@ -1774,30 +1761,20 @@ class GoogleComputeEngine(object):
     def svc(self, value):
         self._svc = value
 
-    @property
-    def http(self):
-        return self._http
-
-    @http.setter
-    def http(self, value):
-        self._http = value
-
 
 def gceAuthorize_from_json(json_filename):
     url = 'https://www.googleapis.com/auth/compute'
 
-    creds = ServiceAccountCredentials.from_json_keyfile_name(
+    credentials = service_account.Credentials.from_service_account_file(
         json_filename, scopes=[url])
 
-    http = httplib2.Http()
-    http = creds.authorize(http)
+    svc = googleapiclient.discovery.build(
+        'compute', API_VERSION, credentials=credentials)
 
-    svc = build('compute', API_VERSION, http=http)
-
-    return GoogleComputeEngine(svc=svc, http=http)
+    return GoogleComputeEngine(svc=svc)
 
 
-def _blocking_call(gce_service, auth_http, project_id, response,
+def _blocking_call(gce_service, project_id, response,
                    polling_interval=Gce.DEFAULT_SLEEP_TIME):
     status = response['status']
 
@@ -1807,15 +1784,16 @@ def _blocking_call(gce_service, auth_http, project_id, response,
         # Identify if this is a per-zone resource
         if 'zone' in response:
             zone_name = response['zone'].split('/')[-1]
-            request = gce_service.zoneOperations().get(
+
+            response  = gce_service.zoneOperations().get(
                 project=project_id,
                 operation=operation_id,
-                zone=zone_name)
+                zone=zone_name
+            ).execute()
         else:
-            request = gce_service.globalOperations().get(
-                project=project_id, operation=operation_id)
-
-        response = request.execute(http=auth_http)
+            response = gce_service.globalOperations().get(
+                project=project_id, operation=operation_id
+            ).execute()
 
         if response:
             status = response['status']
@@ -1828,9 +1806,11 @@ def _blocking_call(gce_service, auth_http, project_id, response,
 
 def wait_for_instance(session, pending_node_request):
     result = _blocking_call(
-        session['connection'].svc, session['connection'].http,
-        session['config']['project'], pending_node_request['response'],
-        polling_interval=session['config']['sleeptime'])
+        session['connection'].svc,
+        session['config']['project'],
+        pending_node_request['response'],
+        polling_interval=session['config']['sleeptime']
+    )
 
     pending_node_request['status'] = 'error' \
         if 'error' in result else 'success'
@@ -1840,7 +1820,7 @@ def wait_for_instance(session, pending_node_request):
     return pending_node_request['status'] == 'success'
 
 
-def _gevent_blocking_call(gce_service, auth_http, project_id, response,
+def _gevent_blocking_call(gce_service, project_id, response,
                           polling_interval: int = Gce.DEFAULT_SLEEP_TIME):
     """
     polling_interval is seconds
@@ -1858,15 +1838,16 @@ def _gevent_blocking_call(gce_service, auth_http, project_id, response,
         # Identify if this is a per-zone resource
         if 'zone' in response:
             zone_name = response['zone'].split('/')[-1]
-            request = gce_service.zoneOperations().get(
+
+            response = gce_service.zoneOperations().get(
                 project=project_id,
                 operation=operation_id,
-                zone=zone_name)
+                zone=zone_name
+            ).execute()
         else:
-            request = gce_service.globalOperations().get(
-                project=project_id, operation=operation_id)
-
-        response = request.execute(http=auth_http)
+            response = gce_service.globalOperations().get(
+                project=project_id, operation=operation_id
+            ).execute()
 
         if response:
             status = response['status']
@@ -1891,9 +1872,11 @@ def _gevent_blocking_call(gce_service, auth_http, project_id, response,
 
 def gevent_wait_for_instance(session, pending_node_request):
     result = _gevent_blocking_call(
-        session['connection'].svc, session['connection'].http,
-        session['config']['project'], pending_node_request['response'],
-        polling_interval=session['config']['sleeptime'])
+        session['connection'].svc,
+        session['config']['project'],
+        pending_node_request['response'],
+        polling_interval=session['config']['sleeptime']
+    )
 
     pending_node_request['status'] = 'error' \
         if 'error' in result else 'success'
