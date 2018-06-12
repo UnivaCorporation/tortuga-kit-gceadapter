@@ -363,7 +363,10 @@ class Gce(ResourceAdapter): \
                 status = instance['status']
 
                 if status == 'RUNNING':
+                    previous_state = node.state
                     node.state = 'Provisioned'
+                    self.fire_state_change_event(
+                        db_node=node, previous_state=previous_state)
                     break
 
                 if int(time.time()) > timeoutTime:
@@ -1427,6 +1430,7 @@ dns_nameservers = %(dns_nameservers)s
 
                 # Mark node as 'Provisioned' after being successfully launched
                 node_request['node'].state = 'Provisioned'
+                self.fire_provisioned_event(node_request['node'])
 
                 completed += 1
 
