@@ -25,14 +25,13 @@ import time
 import urllib.parse
 from typing import List, NoReturn, Optional
 
-import gevent
-from gevent.queue import JoinableQueue
-from sqlalchemy.orm.session import Session
-
 import apiclient
+import gevent
 import httplib2
 from apiclient.discovery import build
+from gevent.queue import JoinableQueue
 from oauth2client.service_account import ServiceAccountCredentials
+from sqlalchemy.orm.session import Session
 from tortuga.db.models.hardwareProfile import HardwareProfile
 from tortuga.db.models.nic import Nic
 from tortuga.db.models.node import Node
@@ -394,7 +393,7 @@ class Gce(ResourceAdapter): \
         finally:
             self.__release_session()
 
-    def deleteNode(self, nodes: List[Node]) -> NoReturn:
+    def deleteNode(self, nodes: List[Node]) -> None:
         """
         Raises:
             CommandFailed
