@@ -56,7 +56,8 @@ adapter-mgmt create --resource-adapter gce --profile default \
     --setting project=<project name> \
     --setting startup_script_template=startup_script.py \
     --setting type=n1-standard-1 \
-    --setting zone=us-east1-b
+    --setting zone=us-east1-b \
+    --setting disksize=10000
 ```
 
 Refer to the section "Google Compute Engine resource adapter configuration
@@ -77,6 +78,7 @@ reference" below for further information.
 | default_ssh_user        | Username of default user on created VMs. 'centos' is an appropriate value for CentOS-based VMs. |
 | tags                    | Keywords (separated by spaces) |
 | vcpus                   | Number of virtual CPUs for specified virtual machine type |
+| disksize                | Size of boot disk for virtual machine (in GB) |
 
 <sup>*</sup> Use the following `gcloud` command-line to determine the value for
 `image_url` for CentOS 7:
@@ -146,6 +148,33 @@ See Advanced Topics for additional information about enabling support for
 creating preemptible virtual machines.
 
 ## Advanced Topics
+
+### Configuring virtual machine persistent disks
+
+Persistent disks, including the boot disk, may be configured through the existing software profile partitioning schema mechanism (`update-software-profile ... --add-partition ...`).
+
+Optionally, using the `disksize` setting in the resource adapter configuration allows a default disk size for the boot disk without configuring the software profile partitions. For most users with simple (single disk) virtual machine configurations, using the `disksize` resource adapter configuration setting is sufficient. The following example is for more advanced configurations.
+
+To configure a boot disk using software profile partitions:
+
+```shell
+update-software-profile --name compute \
+    --add-partition root \
+    --disk-size 10000 \
+    --device 1.1 \
+    --file-system ext4 \
+    --size 1 \
+    --no-preserve \
+    --no-boot-loader
+```
+
+This example assumes the software profile "compute" already exists  without a partitioning scheme. While all of the above settings are required, the key valyes are `--device`, `--disk-size`.
+
+To add a second persistent disk (PD), increase the value of the parameter to `--device`. For example, `--device 2.1` represents the second device, first partition.
+
+**Note:** Partitioning of persistent disks is currently **not** supported. This can be done using Puppet or in the startup (bootstrap) script.
+
+Refer to the Tortuga Installation and Administration Guide for addiitonal information about software profile partitioning schema.
 
 ### Instance type to VCPU mapping {#instance_mapping_gce}
 
