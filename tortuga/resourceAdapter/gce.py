@@ -1099,9 +1099,13 @@ dns_nameservers = %(dns_nameservers)s
 
             # 'disksize' setting is ignored if disks/partitions are defined
             # in the software profile.
-            if not persistent_disks and 'disksize' in session['config']:
+            if not persistent_disks:
+                # use 'disksize' setting if set, otherwise default to 10000MB
+                disksize = session['config']['disksize'] \
+                    if 'disksize' in session['config'] else 10000
+
                 persistent_disks.append({
-                    'sizeGb': session['config']['disksize'] / 1000
+                    'sizeGb': disksize / 1000,
                 })
 
             # Now create the instances...
