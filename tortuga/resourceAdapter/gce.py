@@ -558,14 +558,14 @@ class Gce(ResourceAdapter): \
             errmsg = 'Required configuration setting(s) [%s] are missing' % (
                 ' '.join(missing_keys))
 
-            self.getLogger().error('' + errmsg)
+            self.getLogger().error(errmsg)
 
             raise ConfigurationError(errmsg)
 
         if 'key' not in configDict and 'json_keyfile' not in configDict:
             errmsg = '\'key\' or \'json_keyfile\' must be configured'
 
-            self.getLogger().error('' + errmsg)
+            self.getLogger().error(errmsg)
 
             raise ConfigurationError(errmsg)
 
@@ -573,7 +573,7 @@ class Gce(ResourceAdapter): \
             errmsg = ('\'service_account_email\' must be configured when'
                       ' p12 key for authentication')
 
-            self.getLogger().error('' + errmsg)
+            self.getLogger().error(errmsg)
 
             raise ConfigurationError(errmsg)
 
@@ -583,10 +583,14 @@ class Gce(ResourceAdapter): \
         unknown_keys = set(configDict.keys()).difference(valid_keys)
 
         if unknown_keys:
-            errmsg = 'Keys [%s] are unrecognized by this resource adapter' % (
-                ' '.join(unknown_keys))
+            errmsg = 'Unsupported GCE resource adapter setting{}: {}'.format(
+                's' if len(unknown_keys) > 1 else '',
+                ' '.join(unknown_keys)
+            )
 
-            self.getLogger().warning('' + errmsg)
+            self.getLogger().warning(errmsg)
+
+            raise ConfigurationError(errmsg)
 
         # Validate configuration
         self._process_adapter_config(configDict)
