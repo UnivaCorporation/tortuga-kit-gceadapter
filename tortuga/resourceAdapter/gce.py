@@ -532,7 +532,11 @@ class Gce(ResourceAdapter): \
 
         required_keys = [
             'zone',
-            'type', 'network', 'project', 'image_url',
+            'type',
+            'network',
+            'project',
+            'image_url',
+            'json_keyfile',
         ]
 
         optional_keys = [
@@ -541,8 +545,6 @@ class Gce(ResourceAdapter): \
             'metadata',
             'tags',
             'sleeptime',
-            'json_keyfile',
-            'service_account_email',
             'default_scopes',
             'override_dns_domain',
             'dns_nameservers',
@@ -557,21 +559,6 @@ class Gce(ResourceAdapter): \
         if missing_keys:
             errmsg = 'Required configuration setting(s) [%s] are missing' % (
                 ' '.join(missing_keys))
-
-            self.getLogger().error(errmsg)
-
-            raise ConfigurationError(errmsg)
-
-        if 'key' not in configDict and 'json_keyfile' not in configDict:
-            errmsg = '\'key\' or \'json_keyfile\' must be configured'
-
-            self.getLogger().error(errmsg)
-
-            raise ConfigurationError(errmsg)
-
-        if 'key' in configDict and 'service_account_email' not in configDict:
-            errmsg = ('\'service_account_email\' must be configured when'
-                      ' p12 key for authentication')
 
             self.getLogger().error(errmsg)
 
@@ -599,12 +586,8 @@ class Gce(ResourceAdapter): \
 
     def _process_adapter_config(self, configDict):
         # Ensure key file exists
-        if 'key' in configDict:
-            configDict['key'] = self._process_auth_key_config(
-                configDict['key'])
-        else:
-            configDict['json_keyfile'] = self._process_auth_key_config(
-                configDict['json_keyfile'])
+        configDict['json_keyfile'] = self._process_auth_key_config(
+            configDict['json_keyfile'])
 
         # Default to VPN support disabled
         if 'vpn' in configDict:
