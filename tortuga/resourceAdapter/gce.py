@@ -541,7 +541,6 @@ class Gce(ResourceAdapter): \
             'metadata',
             'tags',
             'sleeptime',
-            'key',
             'json_keyfile',
             'service_account_email',
             'default_scopes',
@@ -768,13 +767,8 @@ class Gce(ResourceAdapter): \
 
         session['config'] = self.__getConfig(section_name)
 
-        if 'key' in session['config']:
-            session['connection'] = gceAuthorize(
-                session['config']['key'],
-                session['config']['service_account_email'])
-        else:
-            session['connection'] = gceAuthorize_from_json(
-                session['config']['json_keyfile'])
+        session['connection'] = gceAuthorize_from_json(
+            session['config']['json_keyfile'])
 
         return session
 
@@ -1783,20 +1777,6 @@ class GoogleComputeEngine(object):
     @http.setter
     def http(self, value):
         self._http = value
-
-
-def gceAuthorize(key_filename, service_account_email):
-    url = 'https://www.googleapis.com/auth/compute'
-
-    creds = ServiceAccountCredentials.from_p12_keyfile(
-        service_account_email, key_filename, scopes=[url])
-
-    http = httplib2.Http()
-    http = creds.authorize(http)
-
-    svc = build('compute', API_VERSION, http=http)
-
-    return GoogleComputeEngine(svc=svc, http=http)
 
 
 def gceAuthorize_from_json(json_filename):
