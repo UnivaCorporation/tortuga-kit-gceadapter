@@ -550,7 +550,8 @@ class Gce(ResourceAdapter): \
             'dns_nameservers',
             'dns_options',
             'dns_search',
-            'vcpus'
+            'vcpus',
+            'disksize',
         ]
 
         # Check for missing required configuration settings
@@ -664,6 +665,15 @@ class Gce(ResourceAdapter): \
         except ValueError:
             raise ConfigurationError(
                 'Invalid/malformed value for \'vcpus\'')
+
+        # disksize
+        try:
+            if 'disksize' in configDict:
+                configDict['disksize'] = int(configDict['disksize'])
+        except ValueError:
+            raise ConfigurationError(
+               'Invalid/malformed value for \'disksize\''
+            )
 
         return configDict
 
@@ -1093,6 +1103,13 @@ dns_nameservers = %(dns_nameservers)s
 
             persistent_disks = self.__process_added_disk_changes(
                 session, node_request)
+
+            # 'disksize' setting is ignored if disks/partitions are defined
+            # in the software profile.
+            if not persistent_disks and 'disksize' in session['config']:
+                persistent_disks.append({
+                    'sizeGb': session['config']['disksize'] / 1000
+                })
 
             # Now create the instances...
 
