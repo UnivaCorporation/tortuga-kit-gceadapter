@@ -23,30 +23,26 @@ with the Tortuga Simple Policy Engine.
 
 Use `install-kit` to install the Google Compute Engine resource adapter kit:
 
-    install-kit kit-gceadapter-6.3.0-0.tar.bz2
+```shell
+install-kit kit-gceadapter-6.3.0-0.tar.bz2
+```
 
 Once installed, the "management" component is enabled on the Tortuga installer
 as follows:
 
-    enable-component -p gceadapter-6.3.0-0 management-6.3
-    /opt/puppetlabs/bin/puppet agent --onetime --no-daemonize
+```shell
+enable-component -p gceadapter-6.3.0-0 management-6.3
+```
 
-Using the Google Cloud Platform Console, create and download credentials to
-be used with the Tortuga Google Compute Engine resource adapter. Refer to
-the Google documentation "[Manage APIs in the Cloud Platform
-Console](https://support.google.com/cloud/answer/6326510)" for information
-on setting up API keys. Tortuga is capable of using either a P12 key file
-or a JSON authentication file, both of which are available through the
-Google Cloud Platform credentials management console.
+Using the Google Cloud Platform Console, create service account credentials
+and download the service file to be used with the Tortuga Google Compute
+Engine resource adapter. Refer to the Google documentation "[Manage APIs in
+the Cloud Platform Console](https://support.google.com/cloud/answer/6326510)"
+for information on setting up API keys.
 
-When using a P12 key file, it is necessary to configure the settings `key`
-and `service_account_email`. When using a JSON authentication file, these
-values are provided and only the setting `json_keyfile` is required.
-
-It is *recommended* to copy the P12 key file or JSON authentication file to
-`$TORTUGA_ROOT/config`. If not copying either the P12 key file or JSON
-authentication file to `$TORTUGA_ROOT/config`, it is necessary to specify the
-full file path to the options `key` or `json_keyfile`, respectively.
+It is *recommended* to copy the service account credentials file to
+`$TORTUGA_ROOT/config`. If not, it is necessary to specify the
+full file path to the setting `json_keyfile`.
 
 Configure the Google Compute Engine resource adapter using the `adapter-mgmt`
 command-line interface.
@@ -71,8 +67,7 @@ reference" below for further information.
 | Setting                 | Description                                 |
 |-------------------------|---------------------------------------------|
 | zone                    | Zone in which compute resources are created. Zone names can be obtained from Console or using `gcloud compute regions list` |
-| json_keyfile            | Filename/path of JSON authentication file as provided by Google Compute Platform |
-| service_account_email   | Email address as provided by Google Compute Platform |
+| json_keyfile            | Filename/path of service account credentials file as provided by Google Compute Platform |
 | type                    | Virtual machine type. For example, "n1-standard-1" |
 | network                 | Name of network where virtual machines will be created |
 | project                 | Name of Google Compute Engine project |
