@@ -23,7 +23,7 @@ import subprocess
 import threading
 import time
 import urllib.parse
-from typing import Any, Dict, List, NoReturn, Optional, Tuple
+from typing import Any, Dict, List, NoReturn, Optional, Tuple, Union
 
 import apiclient
 import gevent
@@ -513,13 +513,14 @@ class Gce(ResourceAdapter): \
                 raise ConfigurationError(
                     'Invalid URL [%s] specified in default_scopes' % (url))
 
-    def __getConfig(self, section_name):
+    def getResourceAdapterConfig(self,
+                                 sectionName: Union[str, None] = None) -> dict:
         """
         Raises:
             ConfigurationError
         """
 
-        configDict = self.getResourceAdapterConfig(sectionName=section_name)
+        configDict = super().getResourceAdapterConfig(sectionName=sectionName)
 
         required_keys = [
             'zone',
@@ -753,7 +754,7 @@ class Gce(ResourceAdapter): \
 
         session = {}
 
-        session['config'] = self.__getConfig(section_name)
+        session['config'] = self.getResourceAdapterConfig(section_name)
 
         session['connection'] = gceAuthorize_from_json(
             session['config']['json_keyfile'])
