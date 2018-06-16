@@ -398,6 +398,15 @@ class Gce(ResourceAdapter): \
                 self.getLogger().debug(
                     'deleteNode(): node=[%s]' % (node.name))
 
+                if not node.instance or \
+                        not node.instance.resource_adapter_configuration:
+                    # this node does not have an associated VM
+                    self.getLogger().debug(
+                        'Node [%s] does not have an associated VM',
+                        node.name
+                    )
+                    continue
+
                 gce_session = self.__get_session(
                     node.instance.resource_adapter_configuration.name)
 
