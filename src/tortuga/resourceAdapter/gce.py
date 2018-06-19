@@ -172,8 +172,11 @@ class Gce(ResourceAdapter): \
             InvalidArgument
         """
 
-        cfgname = addNodesRequest['resource_adapter_configuration'] \
-            if 'resource_adapter_configuration' in addNodesRequest else None
+        cfgname = addNodesRequest.get('resource_adapter_configuration')
+        if cfgname is None or cfgname == 'default':
+            # use default resource adapter configuration, if set
+            cfgname = dbHardwareProfile.default_resource_adapter_config.name \
+                if dbHardwareProfile.default_resource_adapter_config else None
 
         session = self.__get_session(cfgname)
 
