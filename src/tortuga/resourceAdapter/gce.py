@@ -44,6 +44,7 @@ from tortuga.exceptions.configurationError import ConfigurationError
 from tortuga.exceptions.invalidArgument import InvalidArgument
 from tortuga.exceptions.nodeNotFound import NodeNotFound
 from tortuga.exceptions.unsupportedOperation import UnsupportedOperation
+from tortuga.node import state
 from tortuga.os_utility import osUtility
 from tortuga.resourceAdapter.resourceAdapter import ResourceAdapter
 from tortuga.resourceAdapter.utility import get_provisioning_hwprofilenetwork
@@ -360,7 +361,7 @@ class Gce(ResourceAdapter): \
 
                 if status == 'RUNNING':
                     previous_state = node.state
-                    node.state = 'Provisioned'
+                    node.state = state.NODE_STATE_PROVISIONED
                     self.fire_state_change_event(
                         db_node=node, previous_state=previous_state)
                     break
@@ -892,7 +893,7 @@ dns_nameservers = %(dns_nameservers)s
             session, dbSession, dbHardwareProfile, generate_ip)
 
         node = Node(name=name)
-        node.state = 'Launching'
+        node.state = state.NODE_STATE_LAUNCHING
         node.isIdle = False
         node.hardwareprofile = dbHardwareProfile
         node.softwareprofile = dbSoftwareProfile
@@ -1294,7 +1295,7 @@ dns_nameservers = %(dns_nameservers)s
         node = node_request['node']
 
         # Create nics for instance
-        node.state = 'Installed'
+        node.state = state.NODE_STATE_INSTALLED
 
         instance = self.__getInstance(session, instance_name)
 
@@ -1439,7 +1440,7 @@ dns_nameservers = %(dns_nameservers)s
                 result.append(node_request['node'])
 
                 # Mark node as 'Provisioned' after being successfully launched
-                node_request['node'].state = 'Provisioned'
+                node_request['node'].state = state.NODE_STATE_PROVISIONED
                 self.fire_provisioned_event(node_request['node'])
 
                 completed += 1
