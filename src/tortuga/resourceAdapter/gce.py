@@ -48,6 +48,7 @@ from tortuga.node import state
 from tortuga.os_utility import osUtility
 from tortuga.resourceAdapter.resourceAdapter import ResourceAdapter
 from tortuga.resourceAdapter.utility import get_provisioning_hwprofilenetwork
+from tortuga.resourceAdapterConfiguration import settings
 from tortuga.utility.cloudinit import (dump_cloud_config_yaml,
                                        get_cloud_init_path)
 
@@ -76,6 +77,81 @@ class Gce(ResourceAdapter): \
     # Time (seconds) between attempts to update instance status to
     # avoid thrashing
     DEFAULT_SLEEP_TIME = 5
+
+    settings = {
+        'zone': settings.StringSetting(
+            required=True,
+            description='Zone in which compute resources are created'
+        ),
+        'json_keyfile': settings.FileSetting(
+            required=True,
+            description='ilename/path of service account credentials file as '
+                        'provided by Google Compute Platform'
+        ),
+        'type': settings.StringSetting(
+            required=True,
+            description='Virtual machine type; ror example, "n1-standard-1"'
+        ),
+        'network': settings.StringSetting(
+            required=True,
+            description='Name of network where virtual machines will be '
+                        'created'
+        ),
+        'project': settings.StringSetting(
+            required=True,
+            description='Name of Google Compute Engine project'
+        ),
+        'image_url': settings.StringSetting(
+            required=True,
+            description='URL of Google Compute Engine image to be used when '
+                        'creating compute nodes'
+        ),
+        'startup_script_template': settings.FileSetting(
+            description='Filename of "bootstrap" script used by Tortuga to '
+                        'bootstrap compute nodes'
+        ),
+        'default_ssh_user': settings.StringSetting(
+            description='Username of default user on created VMs. "centos" '
+                        'is an appropriate value for CentOS-based VMs.'
+        ),
+        'tags': settings.StringSetting(
+            description='Keywords (separated by spaces)'
+        ),
+        'vcpus': settings.IntegerSetting(
+            description='Number of virtual CPUs for specified virtual '
+                        'machine type'
+        ),
+        'disksize': settings.IntegerSetting(
+            description='Size of boot disk for virtual machine (in GB)'
+        ),
+        'metadata': settings.StringSetting(
+            advanced=True
+        ),
+        'sleeptime': settings.IntegerSetting(
+            advanced=True,
+            default='5'
+        ),
+        'default_scopes': settings.StringSetting(
+            required=True,
+            list=True,
+            list_separator='\n',
+            default='https://www.googleapis.com/auth/devstorage.full_control\n'
+                    'https://www.googleapis.com/auth/compute',
+        ),
+        'override_dns_domain': settings.BooleanSetting(default='False'),
+        'dns_domain': settings.StringSetting(requires='override_dns_domain'),
+        'dns_search': settings.StringSetting(),
+        'dns_options': settings.StringSetting(),
+        'dns_nameservers': settings.StringSetting(
+            default='',
+            list=True,
+            list_separator=' '
+        ),
+        'createtimeout': settings.IntegerSetting(
+            advanced=True,
+            default='600'
+        )
+    }
 
     def __init__(self, addHostSession: Optional[str] = None):
         super(Gce, self).__init__(addHostSession=addHostSession)
@@ -527,179 +603,33 @@ class Gce(ResourceAdapter): \
                 raise ConfigurationError(
                     'Invalid URL [%s] specified in default_scopes' % (url))
 
-    def getResourceAdapterConfig(self,
-                                 sectionName: Union[str, None] = None) -> dict:
-        """
-        Raises:
-            ConfigurationError
-        """
+    def process_config(self, config: Dict[str, Any]):
+        #
+        # Sanity check default scopes
+        #
+        self.__validate_default_scopes(config['default_scopes'])
 
-        configDict = super().getResourceAdapterConfig(sectionName=sectionName)
-
-        required_keys = [
-            'zone',
-            'type',
-            'network',
-            'project',
-            'image_url',
-            'json_keyfile',
-        ]
-
-        optional_keys = [
-            'startup_script_template',
-            'default_ssh_user',
-            'metadata',
-            'tags',
-            'sleeptime',
-            'default_scopes',
-            'override_dns_domain',
-            'dns_nameservers',
-            'dns_options',
-            'dns_search',
-            'vcpus',
-            'disksize',
-        ]
-
-        # Check for missing required configuration settings
-        missing_keys = set(required_keys).difference(set(configDict.keys()))
-
-        if missing_keys:
-            errmsg = 'Required configuration setting(s) [%s] are missing' % (
-                ' '.join(missing_keys))
-
-            self.getLogger().error(errmsg)
-
-            raise ConfigurationError(errmsg)
-
-        # Log a warning if the configuration file contains invalid keys.
-        # This might warn of a typo, for example.
-        valid_keys = set(required_keys).union(optional_keys)
-        unknown_keys = set(configDict.keys()).difference(valid_keys)
-
-        if unknown_keys:
-            errmsg = 'Unsupported GCE resource adapter setting{}: {}'.format(
-                's' if len(unknown_keys) > 1 else '',
-                ' '.join(unknown_keys)
-            )
-
-            self.getLogger().warning(errmsg)
-
-            raise ConfigurationError(errmsg)
-
-        # Validate configuration
-        self._process_adapter_config(configDict)
-
-        return configDict
-
-    def _process_adapter_config(self, configDict):
-        # Ensure key file exists
-        configDict['json_keyfile'] = self._process_auth_key_config(
-            configDict['json_keyfile'])
-
-        # Default to VPN support disabled
-        if 'vpn' in configDict:
-            raise ConfigurationError('OpenVPN support is obsolete')
-
-        if 'default_scopes' in configDict:
-            configDict['default_scopes'] = \
-                configDict['default_scopes'].split('\n')
-
-            # Sanity check: validate 'default_scopes' argument
-            self.__validate_default_scopes(configDict['default_scopes'])
-        else:
-            configDict['default_scopes'] = [
-                'https://www.googleapis.com/auth/devstorage.full_control',
-                'https://www.googleapis.com/auth/compute',
-            ]
-
-        if 'startup_script_template' in configDict:
-            if not configDict['startup_script_template'].startswith('/'):
-                # Ensure path is fully-qualified
-                configDict['startup_script_template'] = os.path.join(
-                    self._cm.getKitConfigBase(),
-                    configDict['startup_script_template'])
-
-        # Default to 600 seconds (10 minutes) for an instance to start
-        configDict['createtimeout'] = 600
-
-        # This is the time (in seconds) to sleep when polling for instance
-        # status after creation, activation, etc.
-        try:
-            configDict['sleeptime'] = int(configDict['sleeptime']) \
-                if 'sleeptime' in configDict else Gce.DEFAULT_SLEEP_TIME
-        except ValueError:
-            self.getLogger().error(
-                'Malformed value for \'sleeptime\'. Using default %d'
-                ' seconds' % (Gce.DEFAULT_SLEEP_TIME))
-
-            configDict['sleeptime'] = Gce.DEFAULT_SLEEP_TIME
-
+        #
         # Parse tags
-        configDict['tags'] = self._parse_custom_tags(configDict)
+        #
+        config['tags'] = self._parse_custom_tags(config)
 
+        #
         # Parse custom metadata
-        configDict['metadata'] = self._parse_custom_metadata(configDict)
+        #
+        config['metadata'] = self._parse_custom_metadata(config)
 
-        configDict['override_dns_domain'] = \
-            configDict['override_dns_domain'].lower().startswith('t') \
-            if 'override_dns_domain' in configDict else False
+        #
+        # DNS settings
+        #
+        config['dns_domain'] = config['dns_domain'] \
+            if 'dns_domain' in config else self.private_dns_zone
 
-        # dns_domain
-        configDict['dns_domain'] = \
-            configDict['dns_domain'] if 'dns_domain' in configDict else \
-            self.private_dns_zone
+        config['dns_search'] = config['dns_search'] \
+            if 'dns_search' in config else self.private_dns_zone
 
-        # dns_search
-        configDict['dns_search'] = configDict['dns_search'] \
-            if 'dns_search' in configDict else self.private_dns_zone
-
-        # dns_nameservers
-        configDict['dns_nameservers'] = \
-            configDict['dns_nameservers'].split(' ') \
-            if 'dns_nameservers' in configDict else []
-
-        if not configDict['dns_nameservers']:
-            configDict['dns_nameservers'].append(
-                self.installer_public_ipaddress)
-
-        configDict['dns_options'] = configDict['dns_options'] \
-            if 'dns_options' in configDict else None
-
-        try:
-            if 'vcpus' in configDict:
-                configDict['vcpus'] = int(configDict['vcpus'])
-        except ValueError:
-            raise ConfigurationError(
-                'Invalid/malformed value for \'vcpus\'')
-
-        # disksize
-        try:
-            if 'disksize' in configDict:
-                configDict['disksize'] = int(configDict['disksize'])
-        except ValueError:
-            raise ConfigurationError(
-               'Invalid/malformed value for \'disksize\''
-            )
-
-        return configDict
-
-    def _process_auth_key_config(self, value):
-        """
-        Raises:
-            ConfigurationError
-        """
-
-        keyPath = value if value.startswith('/') else \
-            os.path.join(self._cm.getKitConfigBase(), value)
-
-        if not os.path.exists(keyPath):
-            errmsg = 'Authentication key file [%s] does not exist' % (keyPath)
-
-            self.getLogger().error('' + errmsg)
-
-            raise ConfigurationError(errmsg)
-
-        return keyPath
+        if not config['dns_nameservers']:
+            config['dns_nameservers'].append(self.installer_public_ipaddress)
 
     def _parse_custom_tags(self, _configDict):
         """
@@ -853,7 +783,7 @@ class Gce(ResourceAdapter): \
             'cfmpassword': self._cm.getCfmPassword(),
             'override_dns_domain': str(configDict['override_dns_domain']),
             'dns_options': quoted_val(configDict['dns_options'])
-                           if configDict['dns_options'] else None,  # noqa
+                if configDict.get('dns_options', None) else None,
             'dns_search': quoted_val(configDict['dns_search']),
             'dns_nameservers': _get_encoded_list(
                 configDict['dns_nameservers']),
