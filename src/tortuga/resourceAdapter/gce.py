@@ -107,10 +107,14 @@ class Gce(ResourceAdapter): \
                         'creating compute nodes'
         ),
         'startup_script_template': settings.FileSetting(
+            required=True,
             description='Filename of "bootstrap" script used by Tortuga to '
-                        'bootstrap compute nodes'
+                        'bootstrap compute nodes',
+            default='startup_script.py',
+            base_path='/opt/tortuga/config/'
         ),
         'default_ssh_user': settings.StringSetting(
+            required=True,
             description='Username of default user on created VMs. "centos" '
                         'is an appropriate value for CentOS-based VMs.'
         ),
@@ -129,7 +133,7 @@ class Gce(ResourceAdapter): \
         ),
         'sleeptime': settings.IntegerSetting(
             advanced=True,
-            default='5'
+            default=str(DEFAULT_SLEEP_TIME)
         ),
         'default_scopes': settings.StringSetting(
             required=True,

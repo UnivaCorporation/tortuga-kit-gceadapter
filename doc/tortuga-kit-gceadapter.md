@@ -57,7 +57,7 @@ adapter-mgmt create --resource-adapter gce --profile default \
     --setting startup_script_template=startup_script.py \
     --setting type=n1-standard-1 \
     --setting zone=us-east1-b \
-    --setting disksize=10000
+    --setting disksize=10
 ```
 
 Refer to the section "Google Compute Engine resource adapter configuration
