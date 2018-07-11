@@ -30,7 +30,7 @@ Once installed, the "management" component is enabled on the Tortuga installer
 as follows:
 
 ```shell
-enable-component -p gceadapter-6.3.1-0 management-6.3
+enable-component -p gceadapter-6.3.1-0 management-6.3.1
 ```
 
 ## Configuring a Service Account
