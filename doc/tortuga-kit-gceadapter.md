@@ -2,26 +2,25 @@
 
 ## Overview
 
-Google Compute Engine support is enabled in Tortuga through the
-installation and activation of the Google Compute Engine resource adapter
+Google Compute Engine (GCE) support is enabled in Tortuga through the
+installation and activation of the GCE resource adapter
 kit.
 
-The Google Compute Engine resource adapter kit provides a resource adapter
-that can be used to perform the following functions on the Google Compute
-Engine platform:
+The GCE resource adapter kit provides a resource adapter that can be
+used to perform the following functions on the GCE platform:
 
 * Add/delete node (virtual machine) instances
-* Run a Tortuga installer node from within Google Compute Engine
-* Run a Tortuga installer node from outside Google Compute Engine (also known
+* Run a Tortuga installer node from within GCE
+* Run a Tortuga installer node from outside GCE (also known
   as *hybrid* mode)
 
-The Google Compute Engine resource adapter maps each virtual machine to a
+The GCE resource adapter maps each virtual machine to a
 Tortuga compute node. It also enables *cloud bursting* when used in conjunction
 with the Tortuga Simple Policy Engine.
 
-## Installing the Google Compute Engine resource adapter kit
+## Installing the GCE resource adapter kit
 
-Use `install-kit` to install the Google Compute Engine resource adapter kit:
+Use `install-kit` to install the GCE resource adapter kit:
 
 ```shell
 install-kit kit-gceadapter-6.3.0-0.tar.bz2
@@ -34,17 +33,41 @@ as follows:
 enable-component -p gceadapter-6.3.0-0 management-6.3
 ```
 
-Using the Google Cloud Platform Console, create service account credentials
-and download the service file to be used with the Tortuga Google Compute
-Engine resource adapter. Refer to the Google documentation "[Manage APIs in
-the Cloud Platform Console](https://support.google.com/cloud/answer/6326510)"
-for information on setting up API keys.
+## Configuring a Service Account
 
-It is *recommended* to copy the service account credentials file to
-`$TORTUGA_ROOT/config`. If not, it is necessary to specify the
-full file path to the setting `json_keyfile`.
+A service account with the appropriate permissions is required to be
+associated with the installer. This section will describe the
+process of doing that. For further reference, you can refer to the
+Google documentation "[Manage APIs in the Cloud Platform Console](https://support.google.com/cloud/answer/6326510)".
 
-Configure the Google Compute Engine resource adapter using the `adapter-mgmt`
+### Create the Service Account
+
+In the GCE console, click on the Navigation Menu -> IAM & Admin -> Service Accounts.
+On that page, click on "Create Service Account". Fill out the service
+account creation form as follows:
+
+- **Name:** type in a name for the service account
+- **Project role:** select the following roles:
+    - Compute Image User
+    - Compute Admin
+- **Furnish a new private key:** check this box
+    - **Key type:** JSON
+- Click on *Save*
+
+You will download a JSON key file as part of this process. Upload this
+file to the installer node. It is *recommended* to copy the service
+account key file to `$TORTUGA_ROOT/config`. If not, it is necessary to
+specify the full file path to the setting `json_keyfile`.
+
+### Activate the service Account
+
+On the installer:
+
+    gcloud auth activate-service-account --key-file=/path/to/your-key.json
+
+## Configure the GCE Adapter
+
+Configure the GCE resource adapter using the `adapter-mgmt`
 command-line interface.
 
 ```shell
@@ -63,7 +86,7 @@ adapter-mgmt create --resource-adapter gce --profile default \
 Refer to the section "Google Compute Engine resource adapter configuration
 reference" below for further information.
 
-## Google Compute Engine resource adapter configuration reference
+## GCE resource adapter configuration reference
 
 | Setting                 | Description                                 |
 |-------------------------|---------------------------------------------|
@@ -84,15 +107,12 @@ reference" below for further information.
 `image_url` for CentOS 7:
 
 ```shell
-gcloud compute images describe \
-    $(gcloud compute images list \
-    --filter="name~\"centos-7.*\"" --format='value(name)') \
-    --project centos-cloud --format='value(selfLink)'
+gcloud compute images list --filter="name~\"centos-7.*\"" --uri
 ```
 
-## Creating Google Compute Engine hardware profile
+## Creating GCE hardware profile
 
-Create a default Google Compute Engine-enabled hardware profile:
+Create a default GCE-enabled hardware profile:
 
 ```shell
 create-hardware-profile --name execd
@@ -105,19 +125,19 @@ create new software profile as necessary.
 
 Nodes can then be added using the `add-nodes` command-line interface.
 
-## Google Compute Engine firewall rules
+## GCE firewall rules
 
-All nodes within the Tortuga-managed environment on Google Compute Engine must
+All nodes within the Tortuga-managed environment on GCE must
 be unrestricted access to each other. This is the Google Compute Platform
 default.
 
 Port 22 (tcp) should be opened to allow connecting to GCE instances via `ssh`.
 
-## Google Compute Engine resource adapter usage
+## GCE resource adapter usage
 
 ### Supported Node Operations
 
-The Google Compute Engine resource adapter supports the following Tortuga node
+The GCE resource adapter supports the following Tortuga node
 management commands:
 
 * `activate-node`
@@ -136,7 +156,7 @@ Compute Engine-enabled hardware profile (hardware profile with resource
 adapter set to `gce`) automatically causes Tortuga to use the Google
 Compute Engine resource adapter to manage the nodes.
 
-For example, the following command-line will add 4 Google Compute Engine nodes
+For example, the following command-line will add 4 GCE nodes
 to the software profile `execd` and hardware profile `execd`:
 
 ```shell
@@ -178,7 +198,7 @@ Refer to the Tortuga Installation and Administration Guide for addiitonal inform
 
 ### Instance type to VCPU mapping {#instance_mapping_gce}
 
-The Google Compute Engine platform does not provide the ability to
+The GCE platform does not provide the ability to
 automatically query VM size metadata, so it is necessary to provide a
 mapping mechanism.
 
@@ -220,23 +240,23 @@ n1-highcpu-96,96
 
 ### Enabling support for preemptible virtual machines
 
-Tortuga supports Google Compute Engine
+Tortuga supports GCE
 [preemptible virtual machines](https://cloud.google.com/preemptible-vms/)
 through a standalone "helper" daemon in Tortuga called `gce_monitord`.
 This daemon must be enabled/started after configuring the Google Compute
 Engine resource adapter.
 
-`gce_monitord` will poll Google Compute Engine resources every 60s monitoring
+`gce_monitord` will poll GCE resources every 60s monitoring
 preemptible virtual machines that may have been terminted by Google Compute
 Engine. These nodes will be automatically removed from the Tortuga-managed
 cluster.
 
-**Note:** `gce_monitord` will *only* monitor Google Compute Engine VM
+**Note:** `gce_monitord` will *only* monitor GCE VM
 instances created/launched by Tortuga.
 
 Enable support for preemptible virtual machines:
 
-1. Configure Google Compute Engine resource adapter
+1. Configure GCE resource adapter
 1. Enable and start `gce_monitord`
 
     RHEL/CentOS 7
@@ -258,7 +278,7 @@ Once preemptible support has been enabled, add nodes to Tortuga using the
 This command would add 6 preemptible nodes to the "execd" hardware profile and
 "execd" software profile.
 
-### Google Compute Engine VM image requirements
+### GCE VM image requirements
 
 All custom virtual machine images must conform to the guidelines set by Google
 Compute Platform. The "startup script" mechanism (enabled by default in

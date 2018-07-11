@@ -86,7 +86,8 @@ class Gce(ResourceAdapter): \
         'json_keyfile': settings.FileSetting(
             required=True,
             description='ilename/path of service account credentials file as '
-                        'provided by Google Compute Platform'
+                        'provided by Google Compute Platform',
+            base_path='/opt/tortuga/config/'
         ),
         'type': settings.StringSetting(
             required=True,
@@ -126,7 +127,8 @@ class Gce(ResourceAdapter): \
                         'machine type'
         ),
         'disksize': settings.IntegerSetting(
-            description='Size of boot disk for virtual machine (in GB)'
+            description='Size of boot disk for virtual machine (in GB)',
+            default='10'
         ),
         'metadata': settings.StringSetting(
             advanced=True
@@ -1039,33 +1041,29 @@ dns_nameservers = %(dns_nameservers)s
 
                     raise
 
+            #
             # Persistent disks must be created before the instances
-
-            # self.__process_deleted_disk_changes(conn, dom, node, diskChanges)
-
+            #
             persistent_disks = self.__process_added_disk_changes(
                 session, node_request)
 
+            #
             # 'disksize' setting is ignored if disks/partitions are defined
             # in the software profile.
+            #
             if not persistent_disks:
-                # use 'disksize' setting if set, otherwise default to 10000MB
-                disksize = session['config']['disksize'] \
-                    if 'disksize' in session['config'] else 10000
-
                 persistent_disks.append({
-                    'sizeGb': disksize / 1000,
+                    'sizeGb': session['config']['disksize'],
                 })
 
+            #
             # Now create the instances...
-
+            #
             try:
                 node_request['response'] = self.__launch_instance(
                     session, node_request['instance_name'], metadata,
                     persistent_disks=persistent_disks, preemptible=preemptible)
 
-                # self.getLogger().debug('Instance [%s] response: %s' % (
-                #     node_request['instance_name'], node_request['response']))
             except Exception:
                 self.getLogger().error(
                     'Error launching instance [%s]' % (
