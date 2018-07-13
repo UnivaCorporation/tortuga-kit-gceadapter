@@ -77,6 +77,8 @@ class tortuga_kit_gceadapter::management::service {
 }
 
 class tortuga_kit_gceadapter::management {
+  include tortuga_kit_gceadapter::config
+
   $compdescr = "management-${tortuga_kit_gceadapter::config::major_version}"
 
   # Install dependent packages, configure them, and restart Tortuga webservice
