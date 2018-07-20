@@ -23,5 +23,6 @@ class GceInstaller(ResourceAdapterMixin, KitInstallerBase):
     config_files = [
         'gce-instance-sizes.csv',
         'startup_script.py',
+        'startup_script_bare.py',
     ]
     resource_adapter_name = 'gce'

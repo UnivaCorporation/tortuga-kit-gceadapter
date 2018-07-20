@@ -226,8 +226,11 @@ def bootstrap_puppet():
 
     runCommand(cmd)
 
+def register_compute():
+    runCommand('echo "%s" >> /.tortuga_execd' %(installerHostName))
 
 def main():
+    register_compute()
     vals = platform.dist()
 
     distro_maj_vers = vals[1].split('.')[0]
