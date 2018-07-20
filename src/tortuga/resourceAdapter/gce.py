@@ -30,6 +30,7 @@ import gevent
 import googleapiclient.discovery
 from gevent.queue import JoinableQueue
 from google.oauth2 import service_account
+from google.auth import compute_engine
 from sqlalchemy.orm.session import Session
 from tortuga.db.dbManager import DbManager
 from tortuga.db.models.hardwareProfile import HardwareProfile
@@ -1728,8 +1729,13 @@ class GoogleComputeEngine(object):
 def gceAuthorize_from_json(json_filename):
     url = 'https://www.googleapis.com/auth/compute'
 
-    credentials = service_account.Credentials.from_service_account_file(
-        json_filename, scopes=[url])
+    # Only try and load the file if it exists
+    if os.path.isfile(json_filename):
+        credentials = service_account.Credentials.from_service_account_file(
+            json_filename, scopes=[url])
+    else:
+        # Try and fall back to machine credentials
+        credentials = compute_engine.Credentials()
 
     svc = googleapiclient.discovery.build(
         'compute', API_VERSION, credentials=credentials)
