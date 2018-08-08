@@ -23,7 +23,7 @@ import subprocess
 import threading
 import time
 import urllib.parse
-from typing import Any, Dict, List, NoReturn, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple
 
 import apiclient
 import gevent
