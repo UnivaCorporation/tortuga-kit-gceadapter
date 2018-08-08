@@ -1653,7 +1653,7 @@ dns_nameservers = %(dns_nameservers)s
                         gce_session['connection'].svc,
                         gce_session['config']['project'],
                         initial_response,
-                        polling_interval=session['config']['sleeptime']
+                        polling_interval=gce_session['config']['sleeptime']
                     )
 
                     self.getLogger().debug(
