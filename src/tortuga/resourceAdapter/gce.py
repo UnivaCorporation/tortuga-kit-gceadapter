@@ -23,7 +23,7 @@ import subprocess
 import threading
 import time
 import urllib.parse
-from typing import Any, Dict, List, NoReturn, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple
 
 import apiclient
 import gevent
@@ -42,7 +42,6 @@ from tortuga.db.models.softwareProfile import SoftwareProfile
 from tortuga.db.nodesDbHandler import NodesDbHandler
 from tortuga.exceptions.commandFailed import CommandFailed
 from tortuga.exceptions.configurationError import ConfigurationError
-from tortuga.exceptions.invalidArgument import InvalidArgument
 from tortuga.exceptions.nodeNotFound import NodeNotFound
 from tortuga.exceptions.unsupportedOperation import UnsupportedOperation
 from tortuga.node import state
@@ -215,36 +214,6 @@ class Gce(ResourceAdapter): \
             InvalidArgument
         """
 
-        if False:
-            # This code was taken verbatim from the AWS resource adapter
-            if not dbHardwareProfile.hardwareprofilenetworks:
-                logmsg = ('Hardware profile [%s] does not have an'
-                          ' associated %s' % (
-                              dbHardwareProfile.name,
-                              'provisioning NIC or network'
-                              if not dbHardwareProfile.nics else
-                              'provisioning network'))
-
-                self.getLogger().error(
-                    'Error adding node(s): %s' % (logmsg))
-
-                raise InvalidArgument(logmsg)
-            elif not dbHardwareProfile.nics:
-                logmsg = ('Hardware profile [%s] does not have an'
-                          ' associated provisioning NIC' % (
-                              dbHardwareProfile.name))
-
-                self.getLogger().error(
-                    'Error adding node(s): %s' % (logmsg))
-
-                raise InvalidArgument(logmsg)
-
-            if dbHardwareProfile.location == 'remote-vpn':
-                raise InvalidArgument(
-                    'Conflicting options: hardware profile location'
-                    ' is \'%s\' and VPN is enabled' % (
-                        dbHardwareProfile.location))
-
     def start(self, addNodesRequest, dbSession: Session,
               dbHardwareProfile: HardwareProfile,
               dbSoftwareProfile: Optional[SoftwareProfile] = None) \
@@ -390,7 +359,7 @@ class Gce(ResourceAdapter): \
 
             # Create any persistent disks before launching instance
             response = self.__create_persistent_disk(
-                session, instance_name)
+                session, instance_name, 10)
 
             result = _blocking_call(
                 session['connection'].svc,
@@ -480,33 +449,32 @@ class Gce(ResourceAdapter): \
             CommandFailed
         """
 
-        with DbManager().session() as session:
-            # Iterate over list of Node database objects
-            for node in nodes:
+        # Iterate over list of Node database objects
+        for node in nodes:
+            self.getLogger().debug(
+                'deleteNode(): node=[%s]' % (node.name))
+
+            if not node.instance or \
+                    not node.instance.resource_adapter_configuration:
+                # this node does not have an associated VM
                 self.getLogger().debug(
-                    'deleteNode(): node=[%s]' % (node.name))
+                    'Node [%s] does not have an associated VM',
+                    node.name
+                )
+                continue
 
-                if not node.instance or \
-                        not node.instance.resource_adapter_configuration:
-                    # this node does not have an associated VM
-                    self.getLogger().debug(
-                        'Node [%s] does not have an associated VM',
-                        node.name
-                    )
-                    continue
+            gce_session = self.__get_session(
+                node.instance.resource_adapter_configuration.name)
 
-                gce_session = self.__get_session(
-                    node.instance.resource_adapter_configuration.name)
+            try:
+                self.__deleteInstance(gce_session, node)
 
-                try:
-                    self.__deleteInstance(gce_session, node)
+                self.__node_cleanup(node)
 
-                    self.__node_cleanup(node)
-
-                    # Update SAN API
-                    self.__process_deleted_disk_changes(node)
-                finally:
-                    self.__release_session()
+                # Update SAN API
+                self.__process_deleted_disk_changes(node)
+            finally:
+                self.__release_session()
 
     def __get_project_and_zone_metadata(self, node: Node) -> Tuple[str, str]:
         project = None
@@ -790,7 +758,7 @@ class Gce(ResourceAdapter): \
             'cfmpassword': self._cm.getCfmPassword(),
             'override_dns_domain': str(configDict['override_dns_domain']),
             'dns_options': quoted_val(configDict['dns_options'])
-                if configDict.get('dns_options', None) else None,
+                           if configDict.get('dns_options', None) else None,
             'dns_search': quoted_val(configDict['dns_search']),
             'dns_nameservers': _get_encoded_list(
                 configDict['dns_nameservers']),
@@ -1171,7 +1139,7 @@ dns_nameservers = %(dns_nameservers)s
 
                 pending_node_request['status'] = 'error'
                 pending_node_request['message'] = logmsg
-        except Exception as exc:
+        except Exception as exc:  # noqa pylint: disable=broad-except
             self.getLogger().exception(
                 '_blocking_call() failed on instance [%s]' % (
                     pending_node_request['instance_name']))
@@ -1653,7 +1621,7 @@ dns_nameservers = %(dns_nameservers)s
                         gce_session['connection'].svc,
                         gce_session['config']['project'],
                         initial_response,
-                        polling_interval=session['config']['sleeptime']
+                        polling_interval=gce_session['config']['sleeptime']
                     )
 
                     self.getLogger().debug(
@@ -1712,7 +1680,7 @@ dns_nameservers = %(dns_nameservers)s
         return vcpus
 
 
-class GoogleComputeEngine(object):
+class GoogleComputeEngine:
     def __init__(self, svc=None):
         self._svc = None
         self.svc = svc
@@ -1754,7 +1722,7 @@ def _blocking_call(gce_service, project_id, response,
         if 'zone' in response:
             zone_name = response['zone'].split('/')[-1]
 
-            response  = gce_service.zoneOperations().get(
+            response = gce_service.zoneOperations().get(
                 project=project_id,
                 operation=operation_id,
                 zone=zone_name
