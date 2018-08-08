@@ -215,36 +215,6 @@ class Gce(ResourceAdapter): \
             InvalidArgument
         """
 
-        if False:
-            # This code was taken verbatim from the AWS resource adapter
-            if not dbHardwareProfile.hardwareprofilenetworks:
-                logmsg = ('Hardware profile [%s] does not have an'
-                          ' associated %s' % (
-                              dbHardwareProfile.name,
-                              'provisioning NIC or network'
-                              if not dbHardwareProfile.nics else
-                              'provisioning network'))
-
-                self.getLogger().error(
-                    'Error adding node(s): %s' % (logmsg))
-
-                raise InvalidArgument(logmsg)
-            elif not dbHardwareProfile.nics:
-                logmsg = ('Hardware profile [%s] does not have an'
-                          ' associated provisioning NIC' % (
-                              dbHardwareProfile.name))
-
-                self.getLogger().error(
-                    'Error adding node(s): %s' % (logmsg))
-
-                raise InvalidArgument(logmsg)
-
-            if dbHardwareProfile.location == 'remote-vpn':
-                raise InvalidArgument(
-                    'Conflicting options: hardware profile location'
-                    ' is \'%s\' and VPN is enabled' % (
-                        dbHardwareProfile.location))
-
     def start(self, addNodesRequest, dbSession: Session,
               dbHardwareProfile: HardwareProfile,
               dbSoftwareProfile: Optional[SoftwareProfile] = None) \
