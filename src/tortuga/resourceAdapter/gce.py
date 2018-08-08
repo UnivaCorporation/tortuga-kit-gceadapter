@@ -480,33 +480,32 @@ class Gce(ResourceAdapter): \
             CommandFailed
         """
 
-        with DbManager().session() as session:
-            # Iterate over list of Node database objects
-            for node in nodes:
+        # Iterate over list of Node database objects
+        for node in nodes:
+            self.getLogger().debug(
+                'deleteNode(): node=[%s]' % (node.name))
+
+            if not node.instance or \
+                    not node.instance.resource_adapter_configuration:
+                # this node does not have an associated VM
                 self.getLogger().debug(
-                    'deleteNode(): node=[%s]' % (node.name))
+                    'Node [%s] does not have an associated VM',
+                    node.name
+                )
+                continue
 
-                if not node.instance or \
-                        not node.instance.resource_adapter_configuration:
-                    # this node does not have an associated VM
-                    self.getLogger().debug(
-                        'Node [%s] does not have an associated VM',
-                        node.name
-                    )
-                    continue
+            gce_session = self.__get_session(
+                node.instance.resource_adapter_configuration.name)
 
-                gce_session = self.__get_session(
-                    node.instance.resource_adapter_configuration.name)
+            try:
+                self.__deleteInstance(gce_session, node)
 
-                try:
-                    self.__deleteInstance(gce_session, node)
+                self.__node_cleanup(node)
 
-                    self.__node_cleanup(node)
-
-                    # Update SAN API
-                    self.__process_deleted_disk_changes(node)
-                finally:
-                    self.__release_session()
+                # Update SAN API
+                self.__process_deleted_disk_changes(node)
+            finally:
+                self.__release_session()
 
     def __get_project_and_zone_metadata(self, node: Node) -> Tuple[str, str]:
         project = None
