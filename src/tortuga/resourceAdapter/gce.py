@@ -42,7 +42,6 @@ from tortuga.db.models.softwareProfile import SoftwareProfile
 from tortuga.db.nodesDbHandler import NodesDbHandler
 from tortuga.exceptions.commandFailed import CommandFailed
 from tortuga.exceptions.configurationError import ConfigurationError
-from tortuga.exceptions.invalidArgument import InvalidArgument
 from tortuga.exceptions.nodeNotFound import NodeNotFound
 from tortuga.exceptions.unsupportedOperation import UnsupportedOperation
 from tortuga.node import state
@@ -360,7 +359,7 @@ class Gce(ResourceAdapter): \
 
             # Create any persistent disks before launching instance
             response = self.__create_persistent_disk(
-                session, instance_name)
+                session, instance_name, 10)
 
             result = _blocking_call(
                 session['connection'].svc,
@@ -759,7 +758,7 @@ class Gce(ResourceAdapter): \
             'cfmpassword': self._cm.getCfmPassword(),
             'override_dns_domain': str(configDict['override_dns_domain']),
             'dns_options': quoted_val(configDict['dns_options'])
-                if configDict.get('dns_options', None) else None,
+                           if configDict.get('dns_options', None) else None,
             'dns_search': quoted_val(configDict['dns_search']),
             'dns_nameservers': _get_encoded_list(
                 configDict['dns_nameservers']),
@@ -1140,7 +1139,7 @@ dns_nameservers = %(dns_nameservers)s
 
                 pending_node_request['status'] = 'error'
                 pending_node_request['message'] = logmsg
-        except Exception as exc:
+        except Exception as exc:  # noqa pylint: disable=broad-except
             self.getLogger().exception(
                 '_blocking_call() failed on instance [%s]' % (
                     pending_node_request['instance_name']))
@@ -1681,7 +1680,7 @@ dns_nameservers = %(dns_nameservers)s
         return vcpus
 
 
-class GoogleComputeEngine(object):
+class GoogleComputeEngine:
     def __init__(self, svc=None):
         self._svc = None
         self.svc = svc
@@ -1723,7 +1722,7 @@ def _blocking_call(gce_service, project_id, response,
         if 'zone' in response:
             zone_name = response['zone'].split('/')[-1]
 
-            response  = gce_service.zoneOperations().get(
+            response = gce_service.zoneOperations().get(
                 project=project_id,
                 operation=operation_id,
                 zone=zone_name
