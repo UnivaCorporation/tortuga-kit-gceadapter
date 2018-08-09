@@ -32,7 +32,6 @@ from gevent.queue import JoinableQueue
 from google.oauth2 import service_account
 from google.auth import compute_engine
 from sqlalchemy.orm.session import Session
-from tortuga.db.dbManager import DbManager
 from tortuga.db.models.hardwareProfile import HardwareProfile
 from tortuga.db.models.instanceMapping import InstanceMapping
 from tortuga.db.models.instanceMetadata import InstanceMetadata
@@ -451,8 +450,7 @@ class Gce(ResourceAdapter): \
 
         # Iterate over list of Node database objects
         for node in nodes:
-            self.getLogger().debug(
-                'deleteNode(): node=[%s]' % (node.name))
+            self.getLogger().debug('deleteNode(): node=[%s]', node.name)
 
             if not node.instance or \
                     not node.instance.resource_adapter_configuration:
@@ -1664,18 +1662,17 @@ dns_nameservers = %(dns_nameservers)s
         #
         vcpus = 0
 
-        with DbManager().session() as session:
-            try:
-                configDict = self.get_node_resource_adapter_config(
-                    NodesDbHandler().getNode(session, name)
-                )
+        try:
+            configDict = self.get_node_resource_adapter_config(
+                NodesDbHandler().getNode(self.session, name)
+            )
 
-                vcpus = configDict.get('vcpus', 0)
-                if not vcpus:
-                    vcpus = self.get_instance_size_mapping(configDict['type'])
+            vcpus = configDict.get('vcpus', 0)
+            if not vcpus:
+                vcpus = self.get_instance_size_mapping(configDict['type'])
 
-            except NodeNotFound:
-                pass
+        except NodeNotFound:
+            pass
 
         return vcpus
 
