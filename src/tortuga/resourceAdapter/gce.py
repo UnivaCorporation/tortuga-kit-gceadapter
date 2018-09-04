@@ -45,6 +45,7 @@ from tortuga.exceptions.configurationError import ConfigurationError
 from tortuga.exceptions.nodeNotFound import NodeNotFound
 from tortuga.exceptions.unsupportedOperation import UnsupportedOperation
 from tortuga.node import state
+from tortuga.os_utility import osUtility
 from tortuga.resourceAdapter.resourceAdapter import ResourceAdapter
 from tortuga.resourceAdapter.utility import get_provisioning_hwprofilenetwork
 from tortuga.resourceAdapterConfiguration import settings
@@ -166,6 +167,8 @@ class Gce(ResourceAdapter): \
         self.__session_lock = threading.Lock()
 
         self.__running_on_gce = None
+
+        self._bhm = osUtility.getOsObjectFactory().getOsBootHostManager(self._cm)
 
     @property
     def is_running_on_gce(self):
@@ -296,9 +299,6 @@ class Gce(ResourceAdapter): \
                     node.instance = None
 
                 node.nics[0].ip = None
-
-                # Remove Puppet certificate for idled node
-                self._bhm.deletePuppetNodeCert(node.name)
             finally:
                 self.__release_session()
 
@@ -522,9 +522,6 @@ class Gce(ResourceAdapter): \
             # Idle node
 
             return
-
-        # Active node
-        self._bhm.deleteNodeCleanup(node)
 
         # Update SAN API
         self.__process_deleted_disk_changes(node)
