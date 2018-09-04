@@ -25,13 +25,14 @@ import time
 import urllib.parse
 from typing import Any, Dict, List, Optional, Tuple
 
+from sqlalchemy.orm.session import Session
+
 import apiclient
 import gevent
 import googleapiclient.discovery
 from gevent.queue import JoinableQueue
-from google.oauth2 import service_account
 from google.auth import compute_engine
-from sqlalchemy.orm.session import Session
+from google.oauth2 import service_account
 from tortuga.db.models.hardwareProfile import HardwareProfile
 from tortuga.db.models.instanceMapping import InstanceMapping
 from tortuga.db.models.instanceMetadata import InstanceMetadata
