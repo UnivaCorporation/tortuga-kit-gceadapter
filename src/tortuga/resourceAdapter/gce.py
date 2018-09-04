@@ -44,7 +44,6 @@ from tortuga.exceptions.configurationError import ConfigurationError
 from tortuga.exceptions.nodeNotFound import NodeNotFound
 from tortuga.exceptions.unsupportedOperation import UnsupportedOperation
 from tortuga.node import state
-from tortuga.os_utility import osUtility
 from tortuga.resourceAdapter.resourceAdapter import ResourceAdapter
 from tortuga.resourceAdapter.utility import get_provisioning_hwprofilenetwork
 from tortuga.resourceAdapterConfiguration import settings
