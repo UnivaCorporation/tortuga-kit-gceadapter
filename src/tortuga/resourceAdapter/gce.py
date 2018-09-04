@@ -298,8 +298,7 @@ class Gce(ResourceAdapter): \
                 node.nics[0].ip = None
 
                 # Remove Puppet certificate for idled node
-                bhm = osUtility.getOsObjectFactory().getOsBootHostManager()
-                bhm.deletePuppetNodeCert(node.name)
+                self._bhm.deletePuppetNodeCert(node.name)
             finally:
                 self.__release_session()
 
@@ -525,8 +524,7 @@ class Gce(ResourceAdapter): \
             return
 
         # Active node
-        bhm = osUtility.getOsObjectFactory().getOsBootHostManager()
-        bhm.deleteNodeCleanup(node)
+        self._bhm.deleteNodeCleanup(node)
 
         # Update SAN API
         self.__process_deleted_disk_changes(node)
@@ -929,9 +927,7 @@ dns_nameservers = %(dns_nameservers)s
         if node.softwareprofile.type == 'compute-cloud_init':
             # Use cloud-init (instance must be cloud-init enabled)
 
-            bhm = osUtility.getOsObjectFactory().getOsBootHostManager()
-
-            user_data = bhm.get_cloud_config(
+            user_data = self._bhm.get_cloud_config(
                 node,
                 node.hardwareprofile,
                 node.softwareprofile)
