@@ -25,13 +25,14 @@ import time
 import urllib.parse
 from typing import Any, Dict, List, Optional, Tuple
 
+from sqlalchemy.orm.session import Session
+
 import apiclient
 import gevent
 import googleapiclient.discovery
 from gevent.queue import JoinableQueue
-from google.oauth2 import service_account
 from google.auth import compute_engine
-from sqlalchemy.orm.session import Session
+from google.oauth2 import service_account
 from tortuga.db.models.hardwareProfile import HardwareProfile
 from tortuga.db.models.instanceMapping import InstanceMapping
 from tortuga.db.models.instanceMetadata import InstanceMetadata
@@ -44,7 +45,6 @@ from tortuga.exceptions.configurationError import ConfigurationError
 from tortuga.exceptions.nodeNotFound import NodeNotFound
 from tortuga.exceptions.unsupportedOperation import UnsupportedOperation
 from tortuga.node import state
-from tortuga.os_utility import osUtility
 from tortuga.resourceAdapter.resourceAdapter import ResourceAdapter
 from tortuga.resourceAdapter.utility import get_provisioning_hwprofilenetwork
 from tortuga.resourceAdapterConfiguration import settings
@@ -298,8 +298,7 @@ class Gce(ResourceAdapter): \
                 node.nics[0].ip = None
 
                 # Remove Puppet certificate for idled node
-                bhm = osUtility.getOsObjectFactory().getOsBootHostManager()
-                bhm.deletePuppetNodeCert(node.name)
+                self._bhm.deletePuppetNodeCert(node.name)
             finally:
                 self.__release_session()
 
@@ -525,8 +524,7 @@ class Gce(ResourceAdapter): \
             return
 
         # Active node
-        bhm = osUtility.getOsObjectFactory().getOsBootHostManager()
-        bhm.deleteNodeCleanup(node)
+        self._bhm.deleteNodeCleanup(node)
 
         # Update SAN API
         self.__process_deleted_disk_changes(node)
@@ -929,9 +927,7 @@ dns_nameservers = %(dns_nameservers)s
         if node.softwareprofile.type == 'compute-cloud_init':
             # Use cloud-init (instance must be cloud-init enabled)
 
-            bhm = osUtility.getOsObjectFactory().getOsBootHostManager()
-
-            user_data = bhm.get_cloud_config(
+            user_data = self._bhm.get_cloud_config(
                 node,
                 node.hardwareprofile,
                 node.softwareprofile)
