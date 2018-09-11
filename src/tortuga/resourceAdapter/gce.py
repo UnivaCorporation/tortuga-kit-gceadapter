@@ -227,13 +227,9 @@ class Gce(ResourceAdapter): \
         :raises: InvalidArgument
         """
 
-        cfgname = addNodesRequest.get('resource_adapter_configuration')
-        if cfgname is None or cfgname == 'default':
-            # use default resource adapter configuration, if set
-            cfgname = dbHardwareProfile.default_resource_adapter_config.name \
-                if dbHardwareProfile.default_resource_adapter_config else None
-
-        session = self.__get_session(cfgname)
+        session = self.__get_session(
+            addNodesRequest.get('resource_adapter_configuration')
+        )
 
         try:
             if dbSoftwareProfile is None or dbSoftwareProfile.isIdle:
@@ -267,8 +263,11 @@ class Gce(ResourceAdapter): \
         :raises UnsupportedOperation: Attempt to start (add) idle node(s)
         """
 
-        cfgname = addNodesRequest['resource_adapter_configuration'] \
-            if 'resource_adapter_configuration' in addNodesRequest else None
+        super().validate_start_arguments(
+            addNodesRequest, dbHardwareProfile, dbSoftwareProfile
+        )
+
+        cfgname = addNodesRequest['resource_adapter_configuration']
 
         session = self.__get_session(cfgname)
 
