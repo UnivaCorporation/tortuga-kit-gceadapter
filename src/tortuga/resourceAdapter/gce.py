@@ -216,25 +216,20 @@ class Gce(ResourceAdapter): \
             InvalidArgument
         """
 
-    def start(self, addNodesRequest, dbSession: Session,
+    def start(self, addNodesRequest: dict, dbSession: Session,
               dbHardwareProfile: HardwareProfile,
               dbSoftwareProfile: Optional[SoftwareProfile] = None) \
         -> List[Node]: \
             # pylint: disable=unused-argument
         """
-        Raises:
-            HardwareProfileNotFound
-            SoftwareProfileNotFound
-            InvalidArgument
+        :raises: HardwareProfileNotFound
+        :raises: SoftwareProfileNotFound
+        :raises: InvalidArgument
         """
 
-        cfgname = addNodesRequest.get('resource_adapter_configuration')
-        if cfgname is None or cfgname == 'default':
-            # use default resource adapter configuration, if set
-            cfgname = dbHardwareProfile.default_resource_adapter_config.name \
-                if dbHardwareProfile.default_resource_adapter_config else None
-
-        session = self.__get_session(cfgname)
+        session = self.__get_session(
+            addNodesRequest.get('resource_adapter_configuration')
+        )
 
         try:
             if dbSoftwareProfile is None or dbSoftwareProfile.isIdle:
@@ -259,12 +254,20 @@ class Gce(ResourceAdapter): \
     def validate_start_arguments(self, addNodesRequest, dbHardwareProfile,
                                  dbSoftwareProfile):
         """
-        Raises:
-            ResourceNotFound
+        Validate arguments to start() API
+
+        addNodesRequest['resource_adapter_configuration'] is updated with
+        the cfg name that is actually used. If not initially provided,
+        'default' is always the default.
+
+        :raises UnsupportedOperation: Attempt to start (add) idle node(s)
         """
 
-        cfgname = addNodesRequest['resource_adapter_configuration'] \
-            if 'resource_adapter_configuration' in addNodesRequest else None
+        super().validate_start_arguments(
+            addNodesRequest, dbHardwareProfile, dbSoftwareProfile
+        )
+
+        cfgname = addNodesRequest['resource_adapter_configuration']
 
         session = self.__get_session(cfgname)
 
@@ -660,8 +663,8 @@ class Gce(ResourceAdapter): \
         """
         Initialize session (authorize with Google Compute Engine, etc)
 
-        Raises:
-            ConfigurationError
+        :raises ConfigurationError:
+        :raises ResourceNotFound:
         """
 
         session = {}
