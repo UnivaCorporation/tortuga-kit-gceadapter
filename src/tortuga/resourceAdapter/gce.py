@@ -216,7 +216,7 @@ class Gce(ResourceAdapter): \
             InvalidArgument
         """
 
-    def start(self, addNodesRequest, dbSession: Session,
+    def start(self, addNodesRequest: dict, dbSession: Session,
               dbHardwareProfile: HardwareProfile,
               dbSoftwareProfile: Optional[SoftwareProfile] = None) \
         -> List[Node]: \
