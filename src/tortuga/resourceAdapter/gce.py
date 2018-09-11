@@ -222,10 +222,9 @@ class Gce(ResourceAdapter): \
         -> List[Node]: \
             # pylint: disable=unused-argument
         """
-        Raises:
-            HardwareProfileNotFound
-            SoftwareProfileNotFound
-            InvalidArgument
+        :raises: HardwareProfileNotFound
+        :raises: SoftwareProfileNotFound
+        :raises: InvalidArgument
         """
 
         cfgname = addNodesRequest.get('resource_adapter_configuration')
@@ -259,8 +258,13 @@ class Gce(ResourceAdapter): \
     def validate_start_arguments(self, addNodesRequest, dbHardwareProfile,
                                  dbSoftwareProfile):
         """
-        Raises:
-            ResourceNotFound
+        Validate arguments to start() API
+
+        addNodesRequest['resource_adapter_configuration'] is updated with
+        the cfg name that is actually used. If not initially provided,
+        'default' is always the default.
+
+        :raises UnsupportedOperation: Attempt to start (add) idle node(s)
         """
 
         cfgname = addNodesRequest['resource_adapter_configuration'] \
@@ -660,8 +664,8 @@ class Gce(ResourceAdapter): \
         """
         Initialize session (authorize with Google Compute Engine, etc)
 
-        Raises:
-            ConfigurationError
+        :raises ConfigurationError:
+        :raises ResourceNotFound:
         """
 
         session = {}
