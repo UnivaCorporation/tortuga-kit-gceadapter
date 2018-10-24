@@ -1,7 +1,7 @@
 {
   "name": "gceadapter",
-  "version": "6.3.1",
+  "version": "7.0.0",
   "iteration": "0",
   "description": "Google Compute Engine resource adapter",
-  "requires_core": "6.3.1-alpha+019"
+  "requires_core": "7.0.0+000"
 }

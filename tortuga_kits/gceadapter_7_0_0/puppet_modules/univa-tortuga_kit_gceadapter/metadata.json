@@ -1,6 +1,6 @@
 {
   "name": "univa/tortuga_kit_gceadapter",
-  "version": "6.3.1",
+  "version": "7.0.0",
   "author": "Univa Corporation",
   "summary": "Integration module for Google Compute Engine resource adapter",
   "license": "Apache 2.0",
