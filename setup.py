@@ -54,7 +54,14 @@ setup(
     ],
     zip_safe=False,
     install_requires=[
+        'colorama',
         'google-api-python-client',
         'gevent',
-    ]
+        'requests',
+    ],
+    entry_points={
+        'console_scripts': [
+            'setup-gce=tortuga.resourceAdapter.gceadapter.scripts.setup_gce:main'
+        ]
+    }
 )

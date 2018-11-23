@@ -26,7 +26,7 @@ import logging
 from daemonize import Daemonize
 from tortuga.config.configManager import ConfigManager
 from tortuga.cli.tortugaCli import TortugaCli
-from tortuga.resourceAdapter.gce import Gce
+from tortuga.resourceAdapter.gceadapter.gce import Gce
 from tortuga.node.nodeApi import NodeApi
 
 
