@@ -15,7 +15,7 @@
 import mock
 import pytest
 
-from tortuga.resourceAdapter.gce \
+from tortuga.resourceAdapter.gceadapter.gce \
     import Gce, ResourceAdapter
 from tortuga.exceptions.configurationError import ConfigurationError
 
@@ -52,7 +52,7 @@ def myfunc(load_config_dict_mock, sectionName=None):
     }
 
 
-@mock.patch('tortuga.resourceAdapter.gce.Gce.private_dns_zone',
+@mock.patch('tortuga.resourceAdapter.gcdadapter.gce.Gce.private_dns_zone',
             new_callable=mock.PropertyMock)
 @mock.patch.object(Gce, '_load_config_from_database', new=myfunc)
 def test_default_config(private_dns_zone_mock):
@@ -69,7 +69,7 @@ def test_default_config(private_dns_zone_mock):
     assert config['dns_search'] == config['dns_domain']
 
 
-@mock.patch('tortuga.resourceAdapter.gce.Gce.private_dns_zone',
+@mock.patch('tortuga.resourceAdapter.gceadapter.gce.Gce.private_dns_zone',
             new_callable=mock.PropertyMock)
 @mock.patch.object(Gce, '_load_config_from_database', return_value={})
 def test_invalid_empty_config(load_config_dict_mock, private_dns_zone_mock):

@@ -72,7 +72,7 @@ def get_disk_volume_name(instance_name, diskNumber):
 class Gce(ResourceAdapter): \
         # pylint: disable=too-many-public-methods
 
-    __adaptername__ = 'gce'
+    __adaptername__ = 'GCE'
 
     # Time (seconds) between attempts to update instance status to
     # avoid thrashing
