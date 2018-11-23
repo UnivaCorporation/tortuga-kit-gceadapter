@@ -15,10 +15,6 @@ from tortuga.resourceAdapterConfiguration.api import \
     ResourceAdapterConfigurationApi
 
 
-class APIError(Exception):
-    pass
-
-
 class ResourceAdapterSetup(TortugaCli):
     adapter_type = 'gce'
     verbose = False
