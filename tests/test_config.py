@@ -49,10 +49,11 @@ def myfunc(load_config_dict_mock, sectionName=None):
         'image_url': 'the_image_url',
         # /etc/resolv.conf was chosen because it's guaranteed to exist
         'json_keyfile': '/etc/resolv.conf',
+        'default_ssh_user': 'myuser',
     }
 
 
-@mock.patch('tortuga.resourceAdapter.gcdadapter.gce.Gce.private_dns_zone',
+@mock.patch('tortuga.resourceAdapter.gceadapter.gce.Gce.private_dns_zone',
             new_callable=mock.PropertyMock)
 @mock.patch.object(Gce, '_load_config_from_database', new=myfunc)
 def test_default_config(private_dns_zone_mock):
@@ -73,7 +74,5 @@ def test_default_config(private_dns_zone_mock):
             new_callable=mock.PropertyMock)
 @mock.patch.object(Gce, '_load_config_from_database', return_value={})
 def test_invalid_empty_config(load_config_dict_mock, private_dns_zone_mock):
-    private_dns_zone_mock.return_value = 'example.com'
-
     with pytest.raises(ConfigurationError):
         Gce().getResourceAdapterConfig()
