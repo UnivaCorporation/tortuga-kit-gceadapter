@@ -50,6 +50,7 @@ def myfunc(load_config_dict_mock, sectionName=None):
         # /etc/resolv.conf was chosen because it's guaranteed to exist
         'json_keyfile': '/etc/resolv.conf',
         'default_ssh_user': 'myuser',
+        'startup_script_template': '/etc/resolv.conf',
     }
 
 
