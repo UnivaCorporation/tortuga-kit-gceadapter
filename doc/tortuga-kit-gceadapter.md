@@ -23,14 +23,14 @@ with the Tortuga Simple Policy Engine.
 Use `install-kit` to install the GCE resource adapter kit:
 
 ```shell
-install-kit kit-gceadapter-7.0.0-0.tar.bz2
+install-kit kit-gceadapter-7.0.2-0.tar.bz2
 ```
 
 Once installed, the "management" component is enabled on the Tortuga installer
 as follows:
 
 ```shell
-enable-component -p gceadapter-7.0.0-0 management-7.0.0
+enable-component -p gceadapter-7.0.2-0 management-7.0.2
 ```
 
 ## Configuring a Service Account
