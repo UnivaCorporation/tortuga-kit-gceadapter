@@ -25,14 +25,13 @@ import time
 import urllib.parse
 from typing import Any, Dict, List, Optional, Tuple
 
-from sqlalchemy.orm.session import Session
-
 import apiclient
 import gevent
 import googleapiclient.discovery
 from gevent.queue import JoinableQueue
 from google.auth import compute_engine
 from google.oauth2 import service_account
+from sqlalchemy.orm.session import Session
 from tortuga.db.models.hardwareProfile import HardwareProfile
 from tortuga.db.models.instanceMapping import InstanceMapping
 from tortuga.db.models.instanceMetadata import InstanceMetadata
@@ -45,12 +44,10 @@ from tortuga.exceptions.configurationError import ConfigurationError
 from tortuga.exceptions.nodeNotFound import NodeNotFound
 from tortuga.exceptions.unsupportedOperation import UnsupportedOperation
 from tortuga.node import state
-from tortuga.os_utility import osUtility
 from tortuga.resourceAdapter.resourceAdapter import ResourceAdapter
 from tortuga.resourceAdapter.utility import get_provisioning_hwprofilenetwork
 from tortuga.resourceAdapterConfiguration import settings
-from tortuga.utility.cloudinit import (dump_cloud_config_yaml,
-                                       get_cloud_init_path)
+from tortuga.utility.cloudinit import get_cloud_init_path
 
 
 API_VERSION = 'v1'
@@ -167,8 +164,6 @@ class Gce(ResourceAdapter): \
         self.__session_lock = threading.Lock()
 
         self.__running_on_gce = None
-
-        self._bhm = osUtility.getOsObjectFactory().getOsBootHostManager(self._cm)
 
     @property
     def is_running_on_gce(self):
@@ -922,27 +917,6 @@ dns_nameservers = %(dns_nameservers)s
         node = pending_node['node']
 
         metadata = self.__get_metadata(session)
-
-        # Add cloud-init data to instance metadata
-        if node.softwareprofile.type == 'compute-cloud_init':
-            # Use cloud-init (instance must be cloud-init enabled)
-
-            user_data = self._bhm.get_cloud_config(
-                node,
-                node.hardwareprofile,
-                node.softwareprofile)
-
-            if user_data:
-                user_data_yaml = dump_cloud_config_yaml(user_data)
-
-                # This is for debug purposes only. This file is not used
-                # for booting Compute Engine instances.
-                self.__write_user_data(node, user_data_yaml)
-
-                # Add cloud-init to metadata for launching instance
-                metadata.append(('user-data', user_data_yaml))
-
-            return metadata
 
         # Default to using startup-script
         if 'startup_script_template' in session['config']:
