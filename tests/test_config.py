@@ -12,42 +12,26 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from typing import Optional
+
 import mock
 import pytest
 
-from tortuga.resourceAdapter.gceadapter.gce \
-    import Gce, ResourceAdapter
 from tortuga.exceptions.configurationError import ConfigurationError
+from tortuga.resourceAdapter.gceadapter.gce import Gce
 
 
-def myfunc(load_config_dict_mock, sectionName=None):
-#     if sectionName == 'testing':
-#         return {
-#             'cloud_init_script_template': '/etc/resolv.conf',
-#             'image_urn': 'value1:value2:value3:value4',
-#         }
-#
-#     return {
-#         'subscription_id': '123',
-#         'client_id': '234',
-#         'secret': 'password',
-#         'tenant_id': '345',
-#         'resource_group': 'resource-group',
-#         'security_group': 'my-nsg',
-#         'default_login': 'myuser',
-#         'user_data_script_template': '/etc/hosts',
-#         'ssh_key_value': 'ssh-rsa ...',
-#         'image': 'myimage',
-#         'use_managed_disks': 'true',
-#     }
+def mock_load_config_from_database(load_config_dict_mock,
+                                   sectionName: Optional[str] = None):
+    """Return dict containing resource adapter configuration profile."""
 
+    # /etc/resolv.conf was chosen because it's guaranteed to exist
     return {
         'zone': 'the_zone',
         'type': 'the_type',
         'network': 'the_network',
         'project': 'the_project',
         'image_url': 'the_image_url',
-        # /etc/resolv.conf was chosen because it's guaranteed to exist
         'json_keyfile': '/etc/resolv.conf',
         'default_ssh_user': 'myuser',
         'startup_script_template': '/etc/resolv.conf',
@@ -56,7 +40,8 @@ def myfunc(load_config_dict_mock, sectionName=None):
 
 @mock.patch('tortuga.resourceAdapter.gceadapter.gce.Gce.private_dns_zone',
             new_callable=mock.PropertyMock)
-@mock.patch.object(Gce, '_load_config_from_database', new=myfunc)
+@mock.patch.object(Gce, '_load_config_from_database',
+                   new=mock_load_config_from_database)
 def test_default_config(private_dns_zone_mock):
     private_dns_zone_mock.return_value = 'example.com'
 
