@@ -121,8 +121,6 @@ def test_multiple_networks_config_advanced(private_dns_zone_mock):
 
         result = adapter.getResourceAdapterConfig()
 
-        import ipdb; ipdb.set_trace()
-
         assert 'networks' in result
 
         assert len(result['networks']) == 2
