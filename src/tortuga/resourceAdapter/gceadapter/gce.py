@@ -42,6 +42,7 @@ from tortuga.db.nodesDbHandler import NodesDbHandler
 from tortuga.exceptions.commandFailed import CommandFailed
 from tortuga.exceptions.configurationError import ConfigurationError
 from tortuga.exceptions.nodeNotFound import NodeNotFound
+from tortuga.exceptions.operationFailed import OperationFailed
 from tortuga.exceptions.unsupportedOperation import UnsupportedOperation
 from tortuga.node import state
 from tortuga.resourceAdapter.resourceAdapter import ResourceAdapter
