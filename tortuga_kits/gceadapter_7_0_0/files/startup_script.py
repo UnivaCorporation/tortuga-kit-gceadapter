@@ -14,15 +14,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os
-import sys
-import subprocess
-import urllib2
-import platform
-import time
 import base64
 import json
+import os
+import platform
 import shutil
+import subprocess
+import sys
+import time
+import urllib2
 
 
 ### SETTINGS
@@ -97,18 +97,18 @@ def set_hostname():
             pass
         except urllib2.HTTPError as ex:
             if ex.code == 401:
-                sys.stderr.write('Invalid UniCloud webservice credentials\n')
+                sys.stderr.write('Invalid Tortuga webservice credentials\n')
                 sys.exit(1)
             elif ex.code == 404:
                 # Unrecoverable
                 sys.stderr.write(
-                    'URI not found; invalid UniCloud webservice'
+                    'URI not found; invalid Tortuga webservice'
                     ' configuration\n')
                 sys.exit(1)
 
             time.sleep(2 ** (nCount + 1))
     else:
-        sys.stderr.write('Unable to communicate with UniCloud webservice\n')
+        sys.stderr.write('Unable to communicate with Tortuga webservice\n')
         sys.exit(1)
 
     try:
@@ -116,15 +116,15 @@ def set_hostname():
 
         if response.code != 200:
             if 'error' in d:
-                errmsg = 'UniCloud webservice error: msg=[%s]' % (
+                errmsg = 'Tortuga webservice error: msg=[%s]' % (
                     error['message'])
             else:
-                errmsg = 'UniCloud webservice internal error'
+                errmsg = 'Tortuga webservice internal error'
 
             raise Exception(errmsg)
 
         if 'node' not in d or 'name' not in d['node']:
-            raise Exception('Malformed JSON response from UniCloud webservice')
+            raise Exception('Malformed JSON response from Tortuga webservice')
 
         hostname = d['node']['name'].lower()
     except ValueError as exc:
