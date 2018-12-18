@@ -59,10 +59,13 @@ def _isPackageInstalled(pkgname):
 
 
 def install_puppet(distro_maj_vers):
-    pkgname = 'puppetlabs-release-pc1'
+    pkgname = 'puppet5-release'
 
-    url = 'http://yum.puppetlabs.com/%s-el-%s.noarch.rpm' % (
-        pkgname, distro_maj_vers)
+    url = (
+        'http://yum.puppetlabs.com/puppet5/%s-el-%s.noarch.rpm' % (
+            pkgname, distro_maj_vers
+        )
+    )
 
     bRepoInstalled = _isPackageInstalled(pkgname)
 
