@@ -100,12 +100,14 @@ class Gce(ResourceAdapter): \
         ),
         'network': settings.StringSetting(
             list=True,
+            required=False,
             description='Network where virtual machines will be created',
             mutually_exclusive=['networks'],
             overrides=['networks'],
         ),
         'networks': settings.StringSetting(
             list=True,
+            required=False,
             description='List of networks where virtual machines will be created',
             mutually_exclusive=['network'],
             overrides=['network'],
