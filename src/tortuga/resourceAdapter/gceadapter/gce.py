@@ -235,14 +235,6 @@ class Gce(ResourceAdapter): \
 
         self.__session_lock.release()
 
-    def __validate_configuration(self, session, dbHardwareProfile,
-                                 dbSoftwareProfile): \
-            # pylint: disable=unused-argument
-        """
-        Raises:
-            InvalidArgument
-        """
-
     def start(self, addNodesRequest: dict, dbSession: Session,
               dbHardwareProfile: HardwareProfile,
               dbSoftwareProfile: Optional[SoftwareProfile] = None) \
@@ -293,13 +285,6 @@ class Gce(ResourceAdapter): \
         super().validate_start_arguments(
             addNodesRequest, dbHardwareProfile, dbSoftwareProfile
         )
-
-        cfgname = addNodesRequest['resource_adapter_configuration']
-
-        session = self.__get_session(cfgname)
-
-        self.__validate_configuration(
-            session, dbHardwareProfile, dbSoftwareProfile)
 
         if not dbSoftwareProfile or dbSoftwareProfile.isIdle:
             raise UnsupportedOperation(
