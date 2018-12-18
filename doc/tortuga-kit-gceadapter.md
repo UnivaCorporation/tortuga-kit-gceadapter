@@ -229,6 +229,23 @@ add-nodes --count 4 --software-profile Compute \
 See Advanced Topics for additional information about enabling support for
 creating preemptible virtual machines.
 
+### Using SSH to access nodes
+
+Connect to the Tortuga-managed compute nodes using `ssh USER@HOSTNAME`,
+where `USER` is the `default_ssh_user` configured in the resource adapter
+settings.
+
+The GCE resource adapter uses the SSH key of the `root` user by default.
+
+If `/root/.ssh/id_rsa` does not exist, use `ssh-keygen` to generate it
+prior to adding nodes.
+
+**Note:** If this key does not exist prior to launching compute nodes, the
+compute nodes will not be accessible by SSH.
+
+Use a custom Puppet module to configure other authorized SSH keys, as
+necessary.
+
 ## Advanced Topics
 
 ### Disable randomized VM names
