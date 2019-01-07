@@ -42,6 +42,7 @@ from tortuga.db.nodesDbHandler import NodesDbHandler
 from tortuga.exceptions.commandFailed import CommandFailed
 from tortuga.exceptions.configurationError import ConfigurationError
 from tortuga.exceptions.nodeNotFound import NodeNotFound
+from tortuga.exceptions.operationFailed import OperationFailed
 from tortuga.exceptions.unsupportedOperation import UnsupportedOperation
 from tortuga.node import state
 from tortuga.resourceAdapter.resourceAdapter import ResourceAdapter
@@ -53,6 +54,13 @@ from tortuga.utility.cloudinit import get_cloud_init_path
 API_VERSION = 'v1'
 
 GCE_URL = 'https://www.googleapis.com/compute/%s/projects/' % (API_VERSION)
+
+EXTERNAL_NETWORK_ACCESS_CONFIG = [
+    {
+        'type': 'ONE_TO_ONE_NAT',
+        'name': 'External NAT',
+    },
+]
 
 
 def get_instance_name_from_host_name(hostname):
@@ -91,18 +99,40 @@ class Gce(ResourceAdapter): \
             description='Virtual machine type; ror example, "n1-standard-1"'
         ),
         'network': settings.StringSetting(
-            required=True,
-            description='Name of network where virtual machines will be '
-                        'created'
+            list=True,
+            required=False,
+            description='Network where virtual machines will be created',
+            mutually_exclusive=['networks'],
+            overrides=['networks'],
+        ),
+        'networks': settings.StringSetting(
+            list=True,
+            required=False,
+            description='List of networks where virtual machines will be created',
+            mutually_exclusive=['network'],
+            overrides=['network'],
         ),
         'project': settings.StringSetting(
             required=True,
             description='Name of Google Compute Engine project'
         ),
+        'image': settings.StringSetting(
+            required=True,
+            description='Name of image used when creating compute nodes',
+            mutually_exclusive=['image_url', 'image_family'],
+            overrides=['image_url', 'image_family'],
+        ),
         'image_url': settings.StringSetting(
             required=True,
-            description='URL of Google Compute Engine image to be used when '
-                        'creating compute nodes'
+            description='URL of image used when creating compute nodes',
+            mutually_exclusive=['image', 'image_family'],
+            overrides=['image', 'image_family'],
+        ),
+        'image_family': settings.StringSetting(
+            required=True,
+            description='Family of image used when creating compute nodes',
+            mutually_exclusive=['image', 'image_url'],
+            overrides=['image', 'image_url'],
         ),
         'startup_script_template': settings.FileSetting(
             required=True,
@@ -153,7 +183,11 @@ class Gce(ResourceAdapter): \
         'createtimeout': settings.IntegerSetting(
             advanced=True,
             default='600'
-        )
+        ),
+        'ssd': settings.BooleanSetting(
+            description='Use SSD backed virtual machines',
+            default='True',
+        ),
     }
 
     def __init__(self, addHostSession: Optional[str] = None):
@@ -202,14 +236,6 @@ class Gce(ResourceAdapter): \
         self.getLogger().debug('Unlocking session lock')
 
         self.__session_lock.release()
-
-    def __validate_configuration(self, session, dbHardwareProfile,
-                                 dbSoftwareProfile): \
-            # pylint: disable=unused-argument
-        """
-        Raises:
-            InvalidArgument
-        """
 
     def start(self, addNodesRequest: dict, dbSession: Session,
               dbHardwareProfile: HardwareProfile,
@@ -261,13 +287,6 @@ class Gce(ResourceAdapter): \
         super().validate_start_arguments(
             addNodesRequest, dbHardwareProfile, dbSoftwareProfile
         )
-
-        cfgname = addNodesRequest['resource_adapter_configuration']
-
-        session = self.__get_session(cfgname)
-
-        self.__validate_configuration(
-            session, dbHardwareProfile, dbSoftwareProfile)
 
         if not dbSoftwareProfile or dbSoftwareProfile.isIdle:
             raise UnsupportedOperation(
@@ -516,6 +535,8 @@ class Gce(ResourceAdapter): \
         self.getLogger().debug(
             '__node_cleanup(): node=[%s]' % (node.name))
 
+        self.addHostApi.clear_session_node(node)
+
         if node.isIdle:
             # Idle node
 
@@ -596,6 +617,35 @@ class Gce(ResourceAdapter): \
 
         if not config['dns_nameservers']:
             config['dns_nameservers'].append(self.installer_public_ipaddress)
+
+        # extract 'region' from 'zone'; partially validate zone as side-effect
+        try:
+            config['region'], _ = config['zone'].rsplit('-', 1)
+        except ValueError:
+            raise ConfigurationError(
+                'Invalid format for \'region\' setting: {}'.format(
+                    config['region'])
+            )
+
+        if 'network' in config:
+            network_defs = config['network']
+
+            del config['network']
+        elif 'networks' in config:
+            network_defs = config['networks']
+
+            del config['networks']
+        else:
+            # if 'network' or 'networks' is not defined, fall back to legacy
+            network_defs = ['default']
+
+        # convert networks definition into list of tuples
+        self.getLogger().debug('Parsing network configuration')
+
+        config['networks'] = self.__parse_network_adapter_config(network_defs)
+
+    def __parse_network_adapter_config(self, network_defs):
+        return [split_three_item_value(network) for network in network_defs]
 
     def _parse_custom_tags(self, _configDict):
         """
@@ -943,14 +993,15 @@ dns_nameservers = %(dns_nameservers)s
                            addNodesRequest, pre_launch_callback=None):
         # Launch Google Compute Engine instance for each node request
 
+        self.getLogger().debug('__launch_instances()')
+
+        common_launch_args = self.__get_common_launch_args(session)
+
         # 'preemptible' is passed through addNodesRequest as
         # an "extra" argument to 'add-nodes'
-        preemptible = 'extra_args' in addNodesRequest and \
+        common_launch_args['preemptible'] = \
+            'extra_args' in addNodesRequest and \
             'preemptible' in addNodesRequest['extra_args']
-
-        self.getLogger().debug(
-            '__launch_instances():'
-            ' preemptible={0}'.format(preemptible))
 
         for node_request in node_requests:
             node_request['instance_name'] = get_instance_name_from_host_name(
@@ -998,8 +1049,12 @@ dns_nameservers = %(dns_nameservers)s
             #
             try:
                 node_request['response'] = self.__launch_instance(
-                    session, node_request['instance_name'], metadata,
-                    persistent_disks=persistent_disks, preemptible=preemptible)
+                    session,
+                    node_request['instance_name'],
+                    metadata,
+                    common_launch_args,
+                    persistent_disks=persistent_disks
+                )
 
             except Exception:
                 self.getLogger().error(
@@ -1025,6 +1080,50 @@ dns_nameservers = %(dns_nameservers)s
 
         # Wait for instances to launch
         self.__wait_for_instances(session, node_requests)
+
+    def __get_common_launch_args(self, session):
+        """
+        :raises OperationFailed:
+        """
+
+        common_launch_args = {}
+
+        if 'image' in session['config']:
+            if '/' in session['config']['image']:
+                image_project, image_name = \
+                    session['config']['image'].split('/', 1)
+            else:
+                image_project = None
+                image_name = session['config']['image']
+
+            common_launch_args['image_url'] = \
+                self.__gce_get_image_by_name(
+                    session['connection'].svc, image_project, image_name
+                )
+        elif 'image_family' in session['config']:
+            if '/' in session['config']['image_family']:
+                image_family_project, image_family = \
+                    session['config']['image_family'].split('/', 1)
+            else:
+                image_family_project = None
+                image_family = session['config']['image_family']
+
+            common_launch_args['image_url'] = \
+                self.__gce_get_image_family_url(
+                    session['connection'].svc, image_family_project,
+                    image_family,
+                )
+        else:
+            common_launch_args['image_url'] = session['config']['image_url']
+
+        common_launch_args['network_interfaces'] = \
+            self.__get_network_interface_definitions(
+                session['config']['project'],
+                session['config']['region'],
+                session['config']['networks'],
+            )
+
+        return common_launch_args
 
     def __process_added_disk_changes(self, session, node_request):
         persistent_disks = []
@@ -1351,6 +1450,13 @@ dns_nameservers = %(dns_nameservers)s
 
         return metadata
 
+    def __get_disk_type_resource_url(self, project, zone, ssd):
+        project_url = '%s%s' % (GCE_URL, project)
+
+        disk_type = 'pd-ssd' if ssd else 'pd-standard'
+
+        return '%s/zones/%s/diskTypes/%s' % (project_url, zone, disk_type)
+
     def __create_persistent_disk(self, session, volume_name: str,
                                  size_in_Gb: int) -> None:
         self.getLogger.debug(
@@ -1368,7 +1474,7 @@ dns_nameservers = %(dns_nameservers)s
         ).execute()
 
     def __launch_instance(self, session, instance_name, metadata,
-                          persistent_disks=None, **kwargs):
+                          common_launch_args, persistent_disks=None):
         # This is the lowest level interface to Google Compute Engine
         # API to launch an instance.  It depends on 'session' (dict) to
         # contain settings, but this could easily be mocked.
@@ -1386,12 +1492,6 @@ dns_nameservers = %(dns_nameservers)s
         machine_type_url = '%s/zones/%s/machineTypes/%s' % (
             project_url, config['zone'], config['type'])
 
-        network_url = '%s/global/networks/%s' % (
-            project_url, config['network'])
-
-        preemptible = kwargs['preemptible'] \
-            if 'preemptible' in kwargs else False
-
         instance = {
             'name': instance_name,
             'tags': {
@@ -1406,27 +1506,24 @@ dns_nameservers = %(dns_nameservers)s
                     # 'deviceName': instance_name,
                     'autoDelete': True,
                     'initializeParams': {
-                        'sourceImage': config['image_url'],
+                        'sourceImage': common_launch_args['image_url'],
                         'diskSizeGb': persistent_disks[0]['sizeGb'],
-                        'diskType': '%s/zones/%s/diskTypes/pd-standard' % (
-                            project_url, config['zone']),
+                        'diskType': self.__get_disk_type_resource_url(
+                            config['project'],
+                            config['zone'],
+                            config['ssd']
+                        ),
                     }
                 },
             ],
-            'networkInterfaces': [{
-                'accessConfigs': [{
-                    'type': 'ONE_TO_ONE_NAT',
-                    'name': 'External NAT',
-                }],
-                'network': network_url,
-            }],
-            # 'serviceAccounts': [{
-            #     'scopes': config['default_scopes'],
-            # }],
-            'scheduling': {
-                'preemptible': preemptible,
-            },
+            'networkInterfaces': common_launch_args['network_interfaces'],
         }
+
+        # only add 'preemptible' flag if enabled
+        if common_launch_args['preemptible']:
+            instance['scheduling'] = {
+                'preemptible': common_launch_args['preemptible']
+            }
 
         # Add any persistent (data) disks to the instance; ignore the first
         # disk in the disk because it's automatically created when the
@@ -1451,6 +1548,61 @@ dns_nameservers = %(dns_nameservers)s
             body=instance,
             zone=config['zone']
         ).execute()
+
+    def __get_network_interface_definitions(self, project, region, networks):
+        """
+        Parse network(s) from config, return list of dicts containing
+        network interface spec
+        """
+
+        network_interfaces = []
+
+        for network in networks:
+            network_interface, network_flags = \
+                self.__get_network_interface(project, region, network)
+
+            # honor 'ext[ernal]' network configuration flag
+            if 'external' in network_flags and network_flags['external']:
+                network_interface['accessConfigs'] = \
+                    EXTERNAL_NETWORK_ACCESS_CONFIG
+
+            network_interfaces.append(network_interface)
+
+        # maintain backwards compatibility by ensuring the default interface
+        # has external access. The semantics of this might need to change
+        # in more advanced network configurations.
+        enable_external_network_access(networks, network_interfaces)
+
+        return network_interfaces
+
+    def __get_network_interface(self, default_project, default_region, network):
+        """
+        Returns properly formed dict containing network interface
+        configuration.
+        """
+
+        network_def, subnet_def, network_args = network
+
+        # pay particular attention to the ordering reversal of input vs. output
+        project, network = \
+            split_forward_slash_value(network_def, default_project)
+
+        network_interface = {
+            'network': '%s%s/global/networks/%s' % (GCE_URL, project, network),
+        }
+
+        if subnet_def:
+            # pay particular attention to the ordering reversal of input vs.
+            # output
+            region, subnetwork = \
+                split_forward_slash_value(subnet_def, default_region)
+
+            network_interface['subnetwork'] = \
+                '%s%s/regions/%s/subnetworks/%s' % (
+                    GCE_URL, project, region, subnetwork
+                )
+
+        return network_interface, get_network_flags(network_args)
 
     def __getInstance(self, session, instance_name):
         connection = session['connection']
@@ -1646,6 +1798,65 @@ dns_nameservers = %(dns_nameservers)s
 
         return vcpus
 
+    def __gce_get_image_by_name(self, svc, image_project, image_name):
+        """
+        :raises OperationFailed: unable to find image
+        """
+
+        try:
+            result = svc.images().get(
+                project=image_project, image=image_name).execute()
+
+            return result['selfLink']
+        except googleapiclient.errors.HttpError as exc:
+
+            errors = self.__process_exception(exc.content)
+
+            if errors:
+                self.getLogger().error(
+                    'The following error(s) were reported:'
+                )
+
+                for err_message, err_reason, err_domain in errors:
+                    self.getLogger().error(
+                        '%s (reason: %s, domain: %s)',
+                        err_message,
+                        err_reason,
+                        err_domain
+                    )
+
+        raise OperationFailed('Error reported by Google Compute Engine')
+
+    def __gce_get_image_family_url(self, svc, image_family_project, image_family):
+        """
+        :raises OperationFailed:
+        """
+
+        try:
+            result = svc.images().getFromFamily(
+                project=image_family_project,
+                family=image_family,
+            ).execute()
+
+            return result['selfLink']
+        except googleapiclient.errors.HttpError as exc:
+
+            errors = self.__process_exception(exc.content)
+
+            if errors:
+                self.getLogger().error(
+                    'The following error(s) were reported:'
+                )
+
+                for err_message, err_reason, err_domain in errors:
+                    self.getLogger().error(
+                        '%s (reason: %s, domain: %s)',
+                        err_message,
+                        err_reason,
+                        err_domain
+                    )
+
+        raise OperationFailed('Error reported by Google Compute Engine')
 
 class GoogleComputeEngine:
     def __init__(self, svc=None):
@@ -1790,7 +2001,7 @@ def gevent_wait_for_instance(session, pending_node_request):
     return pending_node_request['status'] == 'success'
 
 
-def is_running_on_gce():
+def is_running_on_gce() -> bool:
     p = subprocess.Popen('dmidecode -s bios-vendor', shell=True,
                          stdout=subprocess.PIPE)
     stdout, _ = p.communicate()
@@ -1806,3 +2017,70 @@ def _get_encoded_list(items):
 
 def quoted_val(value):
     return '\'{0}\''.format(value)
+
+
+def split_forward_slash_value(value, default):
+    """
+    Returns '<default>/<value>' if value does not contain '/', otherwise
+    '<token1>/<token2>'
+    """
+
+    if '/' in value:
+        return tuple(value.split('/', 1))
+
+    return default, value
+
+
+def split_three_item_value(value) -> Tuple[str, Optional[str], Optional[str]]:
+    token_count = value.count(':')
+
+    if token_count == 2:
+        return value.split(':', token_count)
+
+    if token_count == 1:
+        token1, token2 = value.split(':', token_count)
+
+        return token1, token2, None
+
+    return value, None, None
+
+
+def get_network_flags(network_args):
+    if network_args is None:
+        return {}
+
+    result = {}
+
+    for network_arg in network_args.split(';'):
+        if network_arg.lower().startswith('ext'):
+            result['external'] = True
+        elif network_arg.lower().startswith('noext'):
+            result['external'] = False
+        elif network_arg.lower().startswith('pri'):
+            result['primary'] = True
+
+    return result
+
+
+def enable_external_network_access(networks, network_interfaces):
+    if len(networks) != 1:
+        return
+
+    network_def, _, network_args = networks[0]
+
+    network_flags = get_network_flags(network_args)
+
+    if network_def == 'default' and \
+            not network_args or \
+            (network_args and
+             'external' in network_flags and
+             network_flags['external']):
+        # ensure at least one interface has internet access enabled
+        for network_interface in network_interfaces:
+            if 'accessConfigs' in network_interface:
+                # network configuration contains interface with external
+                # (internet) access
+                break
+        else:
+            network_interfaces[0]['accessConfigs'] = \
+                EXTERNAL_NETWORK_ACCESS_CONFIG
