@@ -3,5 +3,5 @@
   "version": "7.0.2",
   "iteration": "0",
   "description": "Google Compute Engine resource adapter",
-  "requires_core": "7.0.2+001"
+  "requires_core": "7.0.2+002"
 }
