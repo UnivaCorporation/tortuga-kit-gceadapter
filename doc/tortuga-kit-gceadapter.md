@@ -91,6 +91,12 @@ adapter-mgmt create --resource-adapter gce --profile Default \
 Refer to the section "Google Compute Engine resource adapter configuration
 reference" below for further information.
 
+**Note:** If you set the project, network, or zone to be different than
+that of the Tortuga Installer, it WILL NOT WORK by default, as
+additional networking setup will need to be done in GCE. The details of
+these configuration changes are highly case-specific, and thus are not
+covered in this document.
+
 ## GCE resource adapter configuration reference
 
 | Setting                 | Description                                             |
