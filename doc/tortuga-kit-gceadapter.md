@@ -25,14 +25,14 @@ with the Tortuga Simple Policy Engine.
 Use `install-kit` to install the GCE resource adapter kit:
 
 ```shell
-install-kit kit-gceadapter-7.0.2-0.tar.bz2
+install-kit kit-gceadapter-7.0.3-0.tar.bz2
 ```
 
 Once installed, the "management" component is enabled on the Tortuga installer
 as follows:
 
 ```shell
-enable-component -p --no-sync gceadapter-7.0.2-0 management-7.0.2
+enable-component -p --no-sync gceadapter-7.0.3-0 management-7.0.3
 /opt/puppetlabs/bin/puppet agent --verbose --onetime --no-daemonize
 ```
 
