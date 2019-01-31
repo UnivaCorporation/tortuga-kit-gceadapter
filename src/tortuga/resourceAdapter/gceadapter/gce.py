@@ -253,16 +253,14 @@ class Gce(ResourceAdapter): \
         )
 
         try:
-            if dbSoftwareProfile is None or dbSoftwareProfile.isIdle:
-                # Add idle nodes
-                nodes = self.__addIdleNodes(
-                    session, dbSession, addNodesRequest, dbHardwareProfile,
-                    dbSoftwareProfile)
-            else:
-                # Add regular instance-backed (active) nodes
-                nodes = self.__addActiveNodes(
-                    session, dbSession, addNodesRequest,
-                    dbHardwareProfile, dbSoftwareProfile)
+            # Add regular instance-backed (active) nodes
+            nodes = self.__addActiveNodes(
+                session,
+                dbSession,
+                addNodesRequest,
+                dbHardwareProfile,
+                dbSoftwareProfile
+            )
 
             # This is a necessary evil for the time being, until there's
             # a proper context manager implemented.
@@ -281,182 +279,18 @@ class Gce(ResourceAdapter): \
         the cfg name that is actually used. If not initially provided,
         'default' is always the default.
 
-        :raises UnsupportedOperation: Attempt to start (add) idle node(s)
+        :raises UnsupportedOperation: Attempt to add node(s) without
+                                      software profile specified
         """
 
         super().validate_start_arguments(
             addNodesRequest, dbHardwareProfile, dbSoftwareProfile
         )
 
-        if not dbSoftwareProfile or dbSoftwareProfile.isIdle:
+        if not dbSoftwareProfile:
             raise UnsupportedOperation(
-                'Idle nodes not supported with GCE resource adapter')
-
-    def suspendActiveNode(self, node: Node) -> bool:
-        self._logger.debug(
-            'suspendActiveNode(node=[{}]): not supported'.format(node.name))
-
-        # Suspend is not currently supported for cloud-based instances
-        return False
-
-    def idleActiveNode(self, nodes: List[Node]) -> str:
-        # FYI... when this method is called, 'Node' are already marked idle
-
-        # Iterate over list of 'Node' database objects.
-        for node in nodes:
-            session = self.__get_session(
-                node.instance.resource_adapter_configuration.name
+                'Software profile must be specified for GCE ndoes'
             )
-
-            try:
-                self.__deleteInstance(session, node)
-
-                # Update instance cache
-                if node.instance:
-                    node.instance = None
-
-                node.nics[0].ip = None
-            finally:
-                self.__release_session()
-
-        # This is a carryover from past behaviour. The resource adapter
-        # should be responsible for setting the nodes' state.
-        return 'Discovered'
-
-    def activateIdleNode(self, node, softwareProfileName,
-                         softwareProfileChanged):
-        """
-        Raises:
-            CommandFailed
-        """
-
-        self._logger.debug(
-            'activateIdleNode(): node=[%s], softwareProfileName=[%s],'
-            ' softwareProfileChanged=[%s]' % (
-                node.name, softwareProfileName, softwareProfileChanged))
-
-        session = self.__get_session(
-            node.instance.resource_adapter_configuration.name
-        )
-
-        try:
-            configDict = session['config']
-
-            # Sanity checking... ensure node is actually idle
-            if node.instance:
-                # According to the instance cache, this node is reported to
-                # be running.
-
-                raise CommandFailed(
-                    'Compute Engine instance [%s] is already running' % (
-                        node.name))
-
-            instance_name = get_instance_name_from_host_name(node.name)
-
-            metadata = self.__get_metadata(session)
-
-            if 'startup_script_template' in session['config']:
-                startup_script = self.__getStartupScript(
-                    session['config'])
-
-                if startup_script:
-                    metadata.append(('startup-script', startup_script))
-
-                # Uncomment this to create local copy of startup script
-                # tmpfn = '/tmp/startup_script.py.%s' % (dbNode.name)
-                # with open(tmpfn, 'w') as fp:
-                #     fp.write(startup_script + '\n')
-            else:
-                self._logger.warning(
-                    'Startup script template not specified.'
-                    ' Compute Engine instance  [%s] will be started'
-                    ' without startup script' % (instance_name))
-
-            # Create any persistent disks before launching instance
-            response = self.__create_persistent_disk(
-                session, instance_name, 10)
-
-            result = _blocking_call(
-                session['connection'].svc,
-                configDict['project'], response,
-                polling_interval=session['config']['sleeptime'])
-
-            self._logger.debug(
-                'persistent disk creation result=[%s]' % (result))
-
-            selfLink = result['targetLink']
-
-            response = self.__launch_instance(
-                session, instance_name, metadata, persistent_disks=selfLink)
-
-            result = _blocking_call(
-                session['connection'].svc,
-                configDict['project'], response,
-                polling_interval=session['config']['sleeptime'])
-
-            if 'error' in result:
-                # Error attempting to activate idle node
-                self.__process_error_response(instance_name, result)
-
-            # Instance was launched successfully
-            node.instance = InstanceMapping(
-                instance=instance_name,
-                instance_metadata=[
-                    InstanceMetadata(
-                        key='zone', value=response['zone'].split('/')[-1],
-                    )
-                ]
-            )
-
-            bTimedOut = False
-
-            timeoutTime = int(time.time()) + configDict['createtimeout']
-
-            while not bTimedOut and not self.isAborted():
-                time.sleep(configDict['sleeptime'])
-
-                instance = self.__getInstance(session, instance_name)
-
-                if instance is None:
-                    # Instance no longer exists (???)
-                    raise CommandFailed(
-                        'Unable to get Compute Engine instance %s.'
-                        ' Check /var/log/tortuga for details' % (
-                            instance_name))
-
-                status = instance['status']
-
-                if status == 'RUNNING':
-                    previous_state = node.state
-                    node.state = state.NODE_STATE_PROVISIONED
-                    self.fire_state_change_event(
-                        db_node=node, previous_state=previous_state)
-                    break
-
-                if int(time.time()) > timeoutTime:
-                    bTimedOut = True
-
-            if bTimedOut or self.isAborted():
-                # TODO: terminate instance
-
-                self._logger.error(
-                    'Timed out while attempting to activate'
-                    ' node [%s]' % (node.name))
-
-                self.nodeManager.idleNode(node.name)
-
-                return
-
-            # Get IP address from instance
-            node.nics[0].ip = self.__get_instance_internal_ip(instance)
-
-            # TODO
-
-            self._logger.debug(
-                'activateIdleNode(): node [%s] activated'
-                ' successfully' % (node.name))
-        finally:
-            self.__release_session()
 
     def deleteNode(self, nodes: List[Node]) -> None:
         """
@@ -537,33 +371,8 @@ class Gce(ResourceAdapter): \
 
         self.addHostApi.clear_session_node(node)
 
-        if node.isIdle:
-            # Idle node
-
-            return
-
         # Update SAN API
         self.__process_deleted_disk_changes(node)
-
-    def transferNode(self, nodeIdSoftwareProfileTuples,
-                     newSoftwareProfileName):
-        for node, oldSoftwareProfileName in nodeIdSoftwareProfileTuples:
-            self._logger.debug(
-                'transferNode (node=[%s]): old software profile: %s,'
-                ' software profile in node: %s, '
-                ' new software profile: %s' % (
-                    node.name, oldSoftwareProfileName,
-                    node.softwareprofile.name
-                    if node.softwareprofile else None,
-                    newSoftwareProfileName))
-
-            # simply idle and activate
-            self.idleActiveNode([node])
-
-            self.activateIdleNode(
-                node,
-                newSoftwareProfileName,
-                (newSoftwareProfileName != oldSoftwareProfileName))
 
     def startupNode(self, nodes: List[Node],
                     remainingNodeList: Optional[str] = None,
@@ -721,55 +530,6 @@ class Gce(ResourceAdapter): \
 
         return session
 
-    def __addIdleNodes(self, session, dbSession: Session, addNodesRequest,
-                       dbHardwareProfile, dbSoftwareProfile): \
-            # pylint: disable=unused-argument
-        """
-        Create new nodes in idle state
-
-        Raises:
-            UnsupportedOperation
-        """
-
-        self._logger.debug('__addIdleNodes()')
-
-        added_nodes = []
-
-        nodeCount = addNodesRequest['count'] \
-            if 'count' in addNodesRequest else 1
-
-        for _ in range(nodeCount):
-            ip = None
-
-            addNodeRequest = {}
-
-            addNodeRequest['nics'] = [
-                dict(device=dbHardwareProfileNetwork.networkdevice.name)
-                for dbHardwareProfileNetwork in
-                dbHardwareProfile.hardwareprofilenetworks]
-
-            if ip is not None:
-                addNodeRequest['nics'][0]['ip'] = ip
-
-            node = self.nodeApi.createNewNode(
-                None, addNodeRequest, dbHardwareProfile,
-                dbSoftwareProfile)
-
-            node.instance = InstanceMapping(
-                resource_adapter_configuration=self.load_resource_adapter_config(
-                    dbSession,
-                    addNodesRequest['resource_adapter_configuration']
-                )
-            )
-
-            added_nodes.append(node)
-
-            self._logger.debug(
-                'Created idle Google Compute Engine node [%s]' % (
-                    node.name))
-
-        return added_nodes
-
     def __getStartupScript(self, configDict):
         """
         Build a node/instance-specific startup script that will initialize
@@ -840,7 +600,6 @@ dns_nameservers = %(dns_nameservers)s
 
         node = Node(name=name)
         node.state = state.NODE_STATE_LAUNCHING
-        node.isIdle = False
         node.hardwareprofile = dbHardwareProfile
         node.softwareprofile = dbSoftwareProfile
 
@@ -1690,13 +1449,6 @@ dns_nameservers = %(dns_nameservers)s
         """
 
         for node in nodes:
-            if node.isIdle:
-                self._logger.info(
-                    'Ignoring reboot request for idle node [%s]' % (
-                        node.name))
-
-                continue
-
             self._logger.debug(
                 'rebootNode(): node=[%s]' % (node.name))
 
