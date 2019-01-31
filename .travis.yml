@@ -4,18 +4,18 @@ python:
 services:
 - docker
 env:
-- TORTUGA_BUILD_DOCKER="true"
+- TORTUGA_BUILD_DOCKER="true" BUILD_KIT_IMAGE="univa/tortuga-build-kit:7.0.3-devel-latest"
 before_install:
-- docker pull univa/tortuga-build-kit:master-latest
+- docker pull $BUILD_KIT_IMAGE
 install:
 - chmod -R a-w .
-- docker run --rm -it -v `pwd`:/kit-src univa/tortuga-build-kit:master-latest
+- docker run --rm -it -v `pwd`:/kit-src $BUILD_KIT_IMAGE
 script:
 - echo "Done"
 deploy:
   provider: releases
   api_key:
-    secure: ieTyFVgCm/GCZ91VyX890DNm/TIUUBAS+G684t6Et3Xqgu2u+D8xvxR9GkkbZ0FIRfFzBrlj0pg/DaoOmgMd4kGFU+ffBWyYGlcxeYQOvPfYL9OaVpSUyLsVSZ7m7162TYxQ18dV/iM48NWCF57tXkELo/PQzijWI+vk0xey2zL+4etJUjKzx4EKkLWCtJ8eDPD56lCl2uFfg1zyJjzOy242et1nzlozeC16spMdbL99k/91h0xU6vJA3mA9WhrpjUoKYfkLjqd15zxofmA32uysx8yQs/yP193qAKvD3u7QcN81T6mKj30quebPIVl+AEh+dcmAdCQzNbiJZYMRg9Z7bElySpUQTIo3KRlQyaMIXN7HaY5zOLFkpOM7tSYUblfC7zic8NnjIyqdjvyqdvdzqTiuihaA6gbUH8QMCcPylAEa70BoCJ4VZE05HgUVGCo0p7RTnDU4+LC7qgDaaG+Y/B5lx5SIVqqdNrvVIeq2NMTRlXNh9rESjELImDM2/2ZDgGaYO1lgP6eSSQNLFViQySfy3cv5lUHYqzAWdbYZ9qcfXEv4tCYkRbZgbMZHjwYg5WJiSpkMPoD5bpoSaXZcvuSr+H0h3S1xZnba+zOLd++Xf1rE1UT3UWFwDOAy+4f5ukbN53ebOZhdJfe/Thh0UR91HF5rKzwdD9+/Vgs=
+    secure: gBRuUHF/bvNl9G+NOMQyv13fwYUgz+DkggCRRR/kpMBSH9mQcpdVg2ujqoxCBN31qB/on0GkigBzlcYDrZAxdmjMpvDlWNqJKP40sLxvvoiJ7RxMq9K5ASijNvDRab5DUuQsg17akTi4aBYItwS8SA3LphrPmT7iA4UskSPUcsZEdvbIDe9AlogZq0z/Gc93GFG/rkMsWjzkPCCTXY6Q4vlfLs3yqbUBfNMhzj++aTNEul/n4o56Nh1bjkTWVB4ZH7bSHUflfppK9mRSgtCCG8wJLNKM16hTXJsVR4IF+khXweguVeydk0lW55yS5fPUIG2DyJRJFAiMZPkqFbfkThmpdcRrkSdtHn31+HmzV5XxZ3vv9E+5jGrvJorE/rYORd5TZcfpRDEkr92fleCh/vz/7q0GkFTO6ih0wLWvUYoyfUwHB6j+1aOdngel7uxSJW2ihLmAo2JgcsLEWhTyoWAHgtnJs181XcRadfnGEZHhM+3K5cKNSEAt5UHpHbpFwlvyZMHhB9+X3GyYcNCdn6QFAgL5MpPwjvtsTwn5JepsIPs46nFRw7moaTxgNz8qsacyC59XHsIZo5tMiNbeVH3/cavnpZjGD9CSpy7J7/qX6d1I7Erx9QICjfVJdPH95cMIiM4hIqbKrVunIWAQqPF6M4dICoW4Uz/jGZN5kbA=
   file_glob: true
   file: "dist/kit-gceadapter*.tar.bz2"
   skip_cleanup: true
