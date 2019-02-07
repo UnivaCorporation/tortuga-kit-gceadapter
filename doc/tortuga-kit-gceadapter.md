@@ -1,6 +1,6 @@
-# Google Compute Engine resource adapter
+# Google Compute Engine Resource Adapter Kit
 
-December 2018 -- Version 1.0
+February 2019 -- Version 1.1
 
 ## Overview
 
@@ -32,7 +32,7 @@ Once installed, the "management" component is enabled on the Tortuga installer
 as follows:
 
 ```shell
-enable-component -p --no-sync gceadapter-7.0.3-0 management-7.0.3
+enable-component -p gceadapter-7.0.3-0 management-7.0.3
 /opt/puppetlabs/bin/puppet agent --verbose --onetime --no-daemonize
 ```
 
@@ -264,20 +264,20 @@ removed regularly to prevent compute node name clashes.
 This setting can be disabled as follows:
 
 ```shell
-adapter-mgmt update -r gce -p default -s randomize_hostname=false
+adapter-mgmt update -r gce -p Default -s randomize_hostname=false
 ```
 
 or re-enabled as follows:
 
 ```shell
-adapter-mgmt update -r gce -p default -s randomize_hostname=true
+adapter-mgmt update -r gce -p Default -s randomize_hostname=true
 ```
 
 Alternatively, simply deleting the setting and falling back to default
 behaviour:
 
 ```shell
-adapter-mgmt update -r gce -p default -d randomize_hostname
+adapter-mgmt update -r gce -p Default -d randomize_hostname
 ```
 
 ### Custom Machine Types
@@ -450,7 +450,7 @@ chosen to be assigned the external ip address.
 The legacy `network` setting remains unchanged:
 
 ```shell
-adapter-mgmt update -r gce -p default -s network=default
+adapter-mgmt update -r gce -p Default -s network=default
 ```
 
 Since legacy mode networking enables external network access by default,
@@ -477,7 +477,7 @@ The network interfaces assigned to a Tortuga-provisioned VM can be
 displayed under "VM instance details" in the Google Cloud Platform Console.
 
 ```shell
-adapter-mgmt update -r gce -p default \
+adapter-mgmt update -r gce -p Default \
     -s networks=default::external,Tortuga-vpc2:subnet1
 ```
 
@@ -486,7 +486,7 @@ Use the `primary` flag in the network interface specification to denote the
 used by Tortuga. For example,
 
 ```shell
-adapter-mgmt update -r gce -p default \
+adapter-mgmt update -r gce -p Default \
     -s othernet:othernet-subnet1:external,Tortuga2:subnet1:external;primary
 ```
 
@@ -500,7 +500,7 @@ Google Cloud Platform project named `PROJECT2`. The subnetwork is configured
 to be `SUBNET1` from the default region.
 
 ```shell
-adapter-mgmt update -r gce -p default \
+adapter-mgmt update -r gce -p Default \
     -s networks=PROJECT2/NETWORK1:SUBNET1
 ```
 
@@ -508,7 +508,7 @@ In the following example, the region for the subnet overrides the default
 region for the resource adapter configuration profile:
 
 ```shell
-adapter-mgmt update -r gce -p default \
+adapter-mgmt update -r gce -p Default \
     -s networks=PROJECT2/NETWORK3:REGION4/SUBNET5
 ```
 
