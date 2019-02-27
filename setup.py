@@ -18,7 +18,7 @@ import subprocess
 from setuptools import find_packages, setup
 
 
-version = '7.0.2'
+version = '7.0.3'
 
 
 def get_git_revision():
