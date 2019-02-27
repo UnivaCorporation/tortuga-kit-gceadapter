@@ -90,7 +90,7 @@ class Gce(ResourceAdapter): \
         ),
         'json_keyfile': settings.FileSetting(
             required=True,
-            description='ilename/path of service account credentials file as '
+            description='Filename/path of service account credentials file as '
                         'provided by Google Compute Platform',
             base_path='/opt/tortuga/config/'
         ),
