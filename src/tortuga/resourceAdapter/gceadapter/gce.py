@@ -1067,7 +1067,11 @@ dns_nameservers = %(dns_nameservers)s
     def __get_instance_external_ip(self, instance): \
             # pylint: disable=no-self-use
         for network_interface in instance['networkInterfaces']:
-            for accessConfig in network_interface['accessConfigs']:
+            access_configs = network_interface.get('accessConfigs')
+            if not access_configs:
+                continue
+
+            for accessConfig in access_configs:
                 if accessConfig['kind'] == 'compute#accessConfig':
                     if accessConfig['name'] == 'External NAT' and \
                             accessConfig['type'] == 'ONE_TO_ONE_NAT':
