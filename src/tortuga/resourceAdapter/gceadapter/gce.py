@@ -89,7 +89,6 @@ class Gce(ResourceAdapter): \
             description='Zone in which compute resources are created'
         ),
         'json_keyfile': settings.FileSetting(
-            required=True,
             description='Filename/path of service account credentials file as '
                         'provided by Google Compute Platform',
             base_path='/opt/tortuga/config/'
@@ -526,7 +525,8 @@ class Gce(ResourceAdapter): \
         session['config'] = self.getResourceAdapterConfig(section_name)
 
         session['connection'] = gceAuthorize_from_json(
-            session['config']['json_keyfile'])
+            session['config'].get('json_keyfile')
+        )
 
         return session
 
@@ -1617,11 +1617,11 @@ class GoogleComputeEngine:
         self._svc = value
 
 
-def gceAuthorize_from_json(json_filename):
+def gceAuthorize_from_json(json_filename: Optional[str] = None):
     url = 'https://www.googleapis.com/auth/compute'
 
     # Only try and load the file if it exists
-    if os.path.isfile(json_filename):
+    if json_filename and os.path.isfile(json_filename):
         credentials = service_account.Credentials.from_service_account_file(
             json_filename, scopes=[url])
     else:
