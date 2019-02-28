@@ -1305,18 +1305,32 @@ dns_nameservers = %(dns_nameservers)s
         """
         Parse network(s) from config, return list of dicts containing
         network interface spec
+
+        :raises ConfigurationError:
         """
 
         network_interfaces = []
+
+        primary_intfc = None
 
         for network in networks:
             network_interface, network_flags = \
                 self.__get_network_interface(project, region, network)
 
+            # ensure only one interface is marked as primary
+            primary_value = network_flags.get('primary')
+            if primary_value is not None and primary_value:
+                if primary_intfc is not None:
+                    raise ConfigurationError(
+                        'Only one interface may be primary: {} is already'
+                        ' marked as primary'.format(network[0])
+                    )
+
+                primary_intfc = network
+
             # honor 'ext[ernal]' network configuration flag
-            if 'external' in network_flags and network_flags['external']:
-                network_interface['accessConfigs'] = \
-                    EXTERNAL_NETWORK_ACCESS_CONFIG
+            if is_network_flag_set(network_flags, flag='external'):
+                set_external_network_access(network_interface)
 
             network_interfaces.append(network_interface)
 
@@ -1790,42 +1804,61 @@ def split_three_item_value(value) -> Tuple[str, Optional[str], Optional[str]]:
     return value, None, None
 
 
-def get_network_flags(network_args):
+def get_network_flags(network_args: str) -> Dict[str, Any]:
+    """Parse network flags (options) from network configuration.
+
+    Flags are processed in order... last one takes prescedence
+
+    :raises ConfigurationError:
+    """
+
     if network_args is None:
         return {}
 
     result = {}
 
     for network_arg in network_args.split(';'):
+        if not network_arg:
+            # handle empty network args
+            continue
+
         if network_arg.lower().startswith('ext'):
             result['external'] = True
         elif network_arg.lower().startswith('noext'):
             result['external'] = False
         elif network_arg.lower().startswith('pri'):
             result['primary'] = True
+        else:
+            raise ConfigurationError(
+                'Invalid network flag: [{}]'.format(network_arg)
+            )
 
     return result
 
 
+def set_external_network_access(network_interface):
+    network_interface['accessConfigs'] = EXTERNAL_NETWORK_ACCESS_CONFIG
+
+
+def is_network_flag_set(network_flags, *, flag: str, default: bool = False):
+    return network_flags.get(flag, default)
+
+
 def enable_external_network_access(networks, network_interfaces):
-    if len(networks) != 1:
+    """Enable 'external' access (public IP) if only one network interface is
+    defined and if network is 'default' or not external access is not
+    explicitly set.
+    """
+
+    if len(networks) != 1 or not network_interfaces:
         return
 
     network_def, _, network_args = networks[0]
 
-    network_flags = get_network_flags(network_args)
-
-    if network_def == 'default' and \
-            not network_args or \
-            (network_args and
-             'external' in network_flags and
-             network_flags['external']):
-        # ensure at least one interface has internet access enabled
-        for network_interface in network_interfaces:
-            if 'accessConfigs' in network_interface:
-                # network configuration contains interface with external
-                # (internet) access
-                break
-        else:
-            network_interfaces[0]['accessConfigs'] = \
-                EXTERNAL_NETWORK_ACCESS_CONFIG
+    if network_def == 'default' or \
+            is_network_flag_set(
+                get_network_flags(network_args),
+                flag='external',
+                default=True
+            ):
+        set_external_network_access(network_interfaces[0])
