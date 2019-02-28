@@ -940,12 +940,41 @@ dns_nameservers = %(dns_nameservers)s
 
         return persistent_disks
 
+    def __mark_node_request_failed(self, node_request: dict,
+                                   status: str = 'error',
+                                   message: Optional[str] = None) -> None:
+        node_request['status'] = 'error'
+        if message:
+            node_request['message'] = message
+
     def __wait_for_instance(self, session, pending_node_request):
         try:
             if gevent_wait_for_instance(session, pending_node_request):
                 # VM launched successfully
-                self.__instance_post_launch(session, pending_node_request)
+                try:
+                    self.__instance_post_launch(session, pending_node_request)
+                except Exception as exc:  # noqa pylint: disable=broad-except
+                    msg = 'Internal error: post-launch action for VM [%s]' % (
+                        pending_node_request['instance_name']
+                    )
+
+                    # instance post-launch action raised an exception
+                    self._logger.error(msg)
+
+                    self.__mark_node_request_failed(
+                        pending_node_request,
+                        message='{} (exception {}: {})'.format(
+                            msg, exc.__class__.__name__, exc
+                        )
+                    )
+
+                    # delete vm
+                    self.__deleteInstance(
+                        session,
+                        pending_node_request['node']
+                    )
             else:
+                # vm failed to launch successfully
                 result = pending_node_request['result']
 
                 logmsg = ', '.join(
@@ -956,15 +985,19 @@ dns_nameservers = %(dns_nameservers)s
 
                 self._logger.error('%s' % (errmsg))
 
-                pending_node_request['status'] = 'error'
-                pending_node_request['message'] = logmsg
+                self.__mark_node_request_failed(
+                    pending_node_request,
+                    message=logmsg
+                )
         except Exception as exc:  # noqa pylint: disable=broad-except
             self._logger.exception(
                 '_blocking_call() failed on instance [%s]' % (
                     pending_node_request['instance_name']))
 
-            pending_node_request['status'] = 'error'
-            pending_node_request['message'] = str(exc)
+            self.__mark_node_request_failed(
+                pending_node_request,
+                message=str(exc)
+            )
 
     def wait_worker(self, session, queue):
         # greenlet to wait on queue and process VM launches
