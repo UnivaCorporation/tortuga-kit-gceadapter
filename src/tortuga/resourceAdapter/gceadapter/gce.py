@@ -20,7 +20,7 @@ import shlex
 import subprocess
 import time
 import urllib.parse
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Callable
 
 import apiclient
 import gevent
@@ -211,12 +211,12 @@ class Gce(ResourceAdapter): \
         :raises: InvalidArgument
         """
 
-        session = self.__get_gce_session(
+        gce_session = self.get_gce_session(
             addNodesRequest.get('resource_adapter_configuration'))
 
         # Add regular instance-backed (active) nodes
         nodes = self.__addActiveNodes(
-            session,
+            gce_session,
             dbSession,
             addNodesRequest,
             dbHardwareProfile,
@@ -270,7 +270,7 @@ class Gce(ResourceAdapter): \
                 )
                 continue
 
-            gce_session = self.__get_gce_session(
+            gce_session = self.get_gce_session(
                 node.instance.resource_adapter_configuration.name)
 
             self.__deleteInstance(gce_session, node)
@@ -469,11 +469,10 @@ class Gce(ResourceAdapter): \
 
         return metadata
 
-    def __get_gce_session(
+    def get_gce_session(
             self,
             section_name: Optional[str]) -> dict:
-        """
-        Initialize session (authorize with Google Compute Engine, etc)
+        """Initialize GCE session
 
         :raises ConfigurationError:
         :raises ResourceNotFound:
@@ -684,19 +683,28 @@ dns_nameservers = %(dns_nameservers)s
 
         return metadata
 
-    def __launch_instances(self, session, dbSession: Session, node_requests,
-                           addNodesRequest, pre_launch_callback=None):
-        # Launch Google Compute Engine instance for each node request
+    def __launch_instances(self, session: dict, dbSession: Session,
+                           node_requests: List[dict],
+                           addNodesRequest: dict,
+                           pre_launch_callback: Callable[[str], None] = None):
+        """Launch Google Compute Engine instance for each node request
+        """
 
         self._logger.debug('__launch_instances()')
 
-        common_launch_args = self.__get_common_launch_args(session)
+        # 'extra_args' is a dict passed from addNodeRequest containing the
+        # arguments passed through 'add-nodes ... --extra-arg <key:key=value>'
+        common_launch_args = self.__get_common_launch_args(
+            session,
+            extra_args=addNodesRequest.get('extra_args')
+        )
 
-        # 'preemptible' is passed through addNodesRequest as
-        # an "extra" argument to 'add-nodes'
-        common_launch_args['preemptible'] = \
-            'extra_args' in addNodesRequest and \
-            'preemptible' in addNodesRequest['extra_args']
+        self._logger.debug(
+            'Preemptible flag {} enabled'.format(
+                '*is*'
+                if common_launch_args['preemptible'] else 'is not'
+            )
+        )
 
         for node_request in node_requests:
             node_request['instance_name'] = get_instance_name_from_host_name(
@@ -758,15 +766,26 @@ dns_nameservers = %(dns_nameservers)s
 
                 raise
 
+            instance_metadata = [
+                InstanceMetadata(
+                    key='zone',
+                    value=node_request['response']['zone'].split('/')[-1]
+                ),
+            ]
+
+            if common_launch_args.get('preemptible', False):
+                # store metadata indicating vm was launched as preemptible
+                instance_metadata.append(
+                    InstanceMetadata(
+                        key='gce:scheduling',
+                        value='preemptible'
+                    )
+                )
+
             # Update persistent mapping of node -> instance
             node_request['node'].instance = InstanceMapping(
                 instance=node_request['instance_name'],
-                instance_metadata=[
-                    InstanceMetadata(
-                        key='zone',
-                        value=node_request['response']['zone'].split('/')[-1]
-                    ),
-                ],
+                instance_metadata=instance_metadata,
                 resource_adapter_configuration=self.load_resource_adapter_config(
                     dbSession,
                     addNodesRequest.get('resource_adapter_configuration')
@@ -776,8 +795,12 @@ dns_nameservers = %(dns_nameservers)s
         # Wait for instances to launch
         self.__wait_for_instances(session, node_requests)
 
-    def __get_common_launch_args(self, session):
-        """
+    def __get_common_launch_args(
+            self, session: dict, *,
+            extra_args: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Return dict containing vm launch arguments aggregated from
+        resource adapter configuration and extra_args
+
         :raises OperationFailed:
         """
 
@@ -817,6 +840,9 @@ dns_nameservers = %(dns_nameservers)s
                 session['config']['region'],
                 session['config']['networks'],
             )
+
+        common_launch_args['preemptible'] = \
+            'preemptible' in extra_args if extra_args else False
 
         return common_launch_args
 
@@ -1230,7 +1256,7 @@ dns_nameservers = %(dns_nameservers)s
         }
 
         # only add 'preemptible' flag if enabled
-        if common_launch_args['preemptible']:
+        if common_launch_args.get('preemptible', False):
             instance['scheduling'] = {
                 'preemptible': common_launch_args['preemptible']
             }
@@ -1328,13 +1354,17 @@ dns_nameservers = %(dns_nameservers)s
 
         return network_interface, get_network_flags(network_args)
 
-    def __getInstance(self, session, instance_name):
-        connection = session['connection']
+    def gce_get_vm(self, gce_session: dict, instance_name: str) \
+            -> Optional[dict]:
+        """Call GCE to retrieve vm
+        """
+
+        connection = gce_session['connection']
 
         try:
             return connection.svc.instances().get(
-                project=session['config']['project'],
-                zone=session['config']['zone'],
+                project=gce_session['config']['project'],
+                zone=gce_session['config']['zone'],
                 instance=instance_name
             ).execute()
         except apiclient.errors.HttpError as ex:
@@ -1424,7 +1454,7 @@ dns_nameservers = %(dns_nameservers)s
             self._logger.debug(
                 'rebootNode(): node=[%s]' % (node.name))
 
-            gce_session = self.__get_gce_session(
+            gce_session = self.get_gce_session(
                 node.instance.resource_adapter_configuration.name
             )
 
