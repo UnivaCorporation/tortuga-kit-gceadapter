@@ -986,52 +986,31 @@ dns_nameservers = %(dns_nameservers)s
                 raise CommandFailed(
                     'Fatal error launching one or more instances')
 
-    def __instance_post_launch(self, session, node_request):
+    def __instance_post_launch(self, session: dict, node_request: dict) \
+            -> None:
+        """Called after VM has been successfully launched and is in running
+        state.
+        """
+
         instance_name = node_request['instance_name']
         node = node_request['node']
 
         # Create nics for instance
         node.state = state.NODE_STATE_INSTALLED
 
-        instance = self.__getInstance(session, instance_name)
+        internal_ip = self.__get_instance_internal_ip(
+            self.__getInstance(session, instance_name)
+        )
 
-        internal_ip = self.__get_instance_internal_ip(instance)
-
-        # All nodes have a provisioning nic
-        provisioning_nic = Nic(ip=internal_ip, boot=True)
-
-        node.nics.append(provisioning_nic)
-
-        if not self.is_running_on_gce:
-            if node.hardwareprofile.location != 'remote-vpn':
-                # Extract 'external' IP
-                external_ip = self.__get_instance_external_ip(instance)
-
-                if not external_ip:
-                    self._logger.debug(
-                        'Instance [%s] does not have an'
-                        ' external IP' % (instance_name))
-
-                    return
-
-                self._logger.debug(
-                    'Instance [%s] external IP [%s]' % (
-                        instance_name, external_ip))
-
-                external_nic = Nic(ip=external_ip, boot=False)
-
-                node.nics.append(external_nic)
-
-                ip = external_ip
-        else:
-            ip = provisioning_nic.ip
+        node.nics.append(Nic(ip=internal_ip, boot=True))
 
         # Call pre-add-host to set up DNS record
         self._pre_add_host(
             node.name,
             node.hardwareprofile.name,
             node.softwareprofile.name,
-            ip)
+            internal_ip,
+        )
 
     def __get_instance_internal_ip(self, instance): \
             # pylint: disable=no-self-use
