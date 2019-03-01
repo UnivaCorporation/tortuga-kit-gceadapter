@@ -15,56 +15,24 @@
 """Service to monitor Tortuga-managed Google Compute Engine preemptible
 instances"""
 
-import configparser
 import logging
 import os.path
-import signal
 import sys
 import time
+from typing import Any, Dict, Iterator, NoReturn, Optional, Tuple
 
 from daemonize import Daemonize
 from tortuga.cli.tortugaCli import TortugaCli
-from tortuga.config.configManager import ConfigManager
-from tortuga.node.nodeApi import NodeApi
-from tortuga.resourceAdapter.gceadapter.gce import Gce
 from tortuga.db.dbManager import DbManager
+from tortuga.objects.node import Node
+from tortuga.resourceAdapter.gceadapter.gce import Gce
+from tortuga.wsapi.metadataWsApi import MetadataWsApi
+from tortuga.wsapi.nodeWsApi import NodeWsApi
 
 
 POLLING_INTERVAL = 60
 
 PIDFILE = '/var/run/gce_monitord.pid'
-
-
-class SignalHandler(object):
-    def __init__(self):
-        pass
-
-    def __enter__(self):
-        self.interrupted = False
-        self.released = False
-
-        self.original_handler = signal.getsignal(signal.SIGTERM)
-
-        def handler(signum, frame):
-            self.release()
-            self.interrupted = True
-
-        signal.signal(signal.SIGTERM, handler)
-
-        return self
-
-    def __exit__(self, type, value, tb):
-        self.release()
-
-    def release(self):
-        if self.released:
-            return False
-
-        signal.signal(signal.SIGTERM, self.original_handler)
-
-        self.released = True
-
-        return True
 
 
 class AppClass(TortugaCli):
@@ -73,24 +41,10 @@ class AppClass(TortugaCli):
     def __init__(self):
         super(AppClass, self).__init__()
 
-        self._logger = logging.getLogger('tortuga.gce.gce_monitord')
+        self._metadataWsApi = MetadataWsApi()
+        self._nodeWsApi = NodeWsApi()
 
-        self._logger.setLevel(logging.DEBUG)
-
-        # create console handler and set level to debug
-        ch = logging.handlers.TimedRotatingFileHandler(
-            '/var/log/tortuga_gce_monitord', when='midnight')
-        ch.setLevel(logging.DEBUG)
-
-        # create formatter
-        formatter = logging.Formatter(
-            '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-
-        # add formatter to ch
-        ch.setFormatter(formatter)
-
-        # add ch to logger
-        self._logger.addHandler(ch)
+        self._logger = None
 
         self.addOption('--daemonize', action='store_true', default=False,
                        help='Run service in background (daemonize)')
@@ -100,73 +54,120 @@ class AppClass(TortugaCli):
 
         self.addOption(
             '--polling-interval', '-p', type=int,
-            default=POLLING_INTERVAL,
+            default=POLLING_INTERVAL, metavar='SECONDS',
             help='Polling interval in seconds (default: {})'.format(
                 POLLING_INTERVAL
             )
         )
 
+    def parseArgs(self, usage: Optional[str] = None):
+        super().parseArgs(usage=usage)
+
+        self.__init_logger()
+
     def runCommand(self):
         self.parseArgs()
 
-        self._logger.debug('Starting...')
+        self._logger.debug(
+            'Polling interval: %ds',
+            self.getArgs().polling_interval
+        )
 
         if not self.getArgs().daemonize:
             self.main()
         else:
-            daemon = Daemonize(app=os.path.basename(sys.argv[0]),
-                               pid=self.getArgs().pidfile,
-                               action=self.main,
-                               foreground=not self.getArgs().daemonize)
+            Daemonize(
+                app=os.path.basename(sys.argv[0]),
+                pid=self.getArgs().pidfile,
+                action=self.main,
+                foreground=not self.getArgs().daemonize
+            ).start()
 
-            daemon.start()
+    def __init_logger(self):
+        self._logger = logging.getLogger('tortuga.gce.gce_monitord')
 
-    def main(self):
-        node_api = NodeApi()
+        self._logger.setLevel(logging.DEBUG)
 
-        with SignalHandler() as sig_handler:
-            with DbManager().session() as session:
-                adapter = Gce()
-                adapter.session = session
+        if self.getArgs().daemonize:
+            # create console handler and set level to debug
+            ch = logging.handlers.TimedRotatingFileHandler(
+                '/var/log/tortuga_gce_monitord', when='midnight')
 
-                session = adapter._Gce__get_session('default')
+            # create formatter
+            formatter = logging.Formatter(
+                '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        else:
+            ch = logging.StreamHandler()
 
-                while not sig_handler.interrupted:
-                    deleted_nodes = []
+            # create formatter
+            formatter = logging.Formatter('%(levelname)s - %(message)s')
 
-                    cfg = configparser.ConfigParser()
-                    cfg.read(os.path.join(
-                        ConfigManager().getKitConfigBase(),
-                        'gce-instance.conf'))
+        ch.setLevel(logging.DEBUG)
 
-                    for node_name in cfg.sections():
-                        instance_name = cfg.get(node_name, 'instance') \
-                            if cfg.has_option(node_name, 'instance') else None
+        # add formatter to ch
+        ch.setFormatter(formatter)
 
-                        if instance_name is not None:
-                            instance = adapter._Gce__getInstance(
-                                session, instance_name)
+        # add ch to logger
+        self._logger.addHandler(ch)
 
-                            if instance:
-                                if instance['status'] == 'TERMINATED' and \
-                                        instance['scheduling']['preemptible']:
-                                    self._logger.debug(
-                                        'Preemptible instance [{0}]'
-                                        ' terminated'.format(instance_name))
+    def main(self) -> NoReturn:
+        if self.getArgs().daemonize:
+            self._logger.info('PIDFile: %s', self.getArgs().pidfile)
 
-                                    deleted_nodes.append(node_name)
+        with DbManager().session() as session:
+            adapter = Gce()
+            adapter.session = session
 
-                        if len(deleted_nodes) >= 10:
-                            node_api.deleteNode(','.join(deleted_nodes))
+            while True:
+                self.__process_preemptible_nodes(adapter)
 
-                            deleted_nodes = []
+                time.sleep(self.getArgs().polling_interval)
 
-                    if deleted_nodes:
-                        node_api.deleteNode(session, ','.join(deleted_nodes))
+    def __process_preemptible_nodes(self, adapter: Gce):
+        for instance_metadata, node in self.__iter_preemptible_nodes():
+            adapter_cfg = \
+                node.getInstance()['resource_adapter_configuration']['name']
 
-                    time.sleep(self.getArgs().polling_interval)
+            gce_session = adapter.get_gce_session(adapter_cfg)
 
-        self._logger.debug('Exiting.')
+            # call resource adapter to get vm instance
+            vm_inst = adapter.gce_get_vm(
+                gce_session,
+                instance_metadata['instance']['instance']
+            )
+
+            if not is_vm_deleted_or_terminated(vm_inst):
+                continue
+
+            # GCE vm has been preempted, delete stale node record from Tortuga
+            self._logger.info('Deleting node [%s]', node.getName())
+
+            self._nodeWsApi.deleteNode(node.getName())
+
+    def __iter_preemptible_nodes(self) \
+            -> Iterator[Tuple[Dict[str, Any], Node]]:
+        """Iterate over instance metadata, filtering out only records with
+        'gce:scheduling' key set
+        """
+        for instance_metadata in \
+                self._metadataWsApi.list(
+                    filter_key='gce:scheduling'
+                ):
+            yield instance_metadata, \
+                self.__get_node_by_metadata(instance_metadata)
+
+    def __get_node_by_metadata(self, instance_metadata: dict) -> Node:
+        """Return Node object by instance metadata
+        """
+        return self._nodeWsApi.getNode(
+            instance_metadata['instance']['node']['name']
+        )
+
+
+def is_vm_deleted_or_terminated(vm_inst: Optional[dict]) -> bool:
+    """Return whether or not a VM instance has been terminated or deleted.
+    """
+    return vm_inst is None or vm_inst['status'] == 'TERMINATED'
 
 
 def main():

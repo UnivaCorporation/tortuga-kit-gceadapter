@@ -211,12 +211,12 @@ class Gce(ResourceAdapter): \
         :raises: InvalidArgument
         """
 
-        session = self.__get_gce_session(
+        gce_session = self.get_gce_session(
             addNodesRequest.get('resource_adapter_configuration'))
 
         # Add regular instance-backed (active) nodes
         nodes = self.__addActiveNodes(
-            session,
+            gce_session,
             dbSession,
             addNodesRequest,
             dbHardwareProfile,
@@ -270,7 +270,7 @@ class Gce(ResourceAdapter): \
                 )
                 continue
 
-            gce_session = self.__get_gce_session(
+            gce_session = self.get_gce_session(
                 node.instance.resource_adapter_configuration.name)
 
             self.__deleteInstance(gce_session, node)
@@ -469,11 +469,10 @@ class Gce(ResourceAdapter): \
 
         return metadata
 
-    def __get_gce_session(
+    def get_gce_session(
             self,
             section_name: Optional[str]) -> dict:
-        """
-        Initialize session (authorize with Google Compute Engine, etc)
+        """Initialize GCE session
 
         :raises ConfigurationError:
         :raises ResourceNotFound:
@@ -1020,7 +1019,7 @@ dns_nameservers = %(dns_nameservers)s
         # Create nics for instance
         node.state = state.NODE_STATE_INSTALLED
 
-        instance = self.__getInstance(session, instance_name)
+        instance = self.gce_get_vm(session, instance_name)
 
         internal_ip = self.__get_instance_internal_ip(instance)
 
@@ -1376,13 +1375,17 @@ dns_nameservers = %(dns_nameservers)s
 
         return network_interface, get_network_flags(network_args)
 
-    def __getInstance(self, session, instance_name):
-        connection = session['connection']
+    def gce_get_vm(self, gce_session: dict, instance_name: str) \
+            -> Optional[dict]:
+        """Call GCE to retrieve vm
+        """
+
+        connection = gce_session['connection']
 
         try:
             return connection.svc.instances().get(
-                project=session['config']['project'],
-                zone=session['config']['zone'],
+                project=gce_session['config']['project'],
+                zone=gce_session['config']['zone'],
                 instance=instance_name
             ).execute()
         except apiclient.errors.HttpError as ex:
@@ -1472,7 +1475,7 @@ dns_nameservers = %(dns_nameservers)s
             self._logger.debug(
                 'rebootNode(): node=[%s]' % (node.name))
 
-            gce_session = self.__get_gce_session(
+            gce_session = self.get_gce_session(
                 node.instance.resource_adapter_configuration.name
             )
 
