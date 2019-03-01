@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-
 # Copyright 2008-2018 Univa Corporation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,17 +15,19 @@
 """Service to monitor Tortuga-managed Google Compute Engine preemptible
 instances"""
 
-import sys
-import os.path
-import signal
-import time
 import configparser
 import logging
+import os.path
+import signal
+import sys
+import time
+
 from daemonize import Daemonize
-from tortuga.config.configManager import ConfigManager
 from tortuga.cli.tortugaCli import TortugaCli
-from tortuga.resourceAdapter.gceadapter.gce import Gce
+from tortuga.config.configManager import ConfigManager
 from tortuga.node.nodeApi import NodeApi
+from tortuga.resourceAdapter.gceadapter.gce import Gce
+from tortuga.db.dbManager import DbManager
 
 
 POLLING_INTERVAL = 60
@@ -98,68 +98,76 @@ class AppClass(TortugaCli):
         self.addOption('--pidfile', default=PIDFILE,
                        help='Location of PID file')
 
-        self.addOption('--polling-interval', '-p', type='int',
-                       default=POLLING_INTERVAL,
-                       help='Polling interval in seconds (default: %default)')
+        self.addOption(
+            '--polling-interval', '-p', type=int,
+            default=POLLING_INTERVAL,
+            help='Polling interval in seconds (default: {})'.format(
+                POLLING_INTERVAL
+            )
+        )
 
     def runCommand(self):
         self.parseArgs()
 
         self._logger.debug('Starting...')
 
-        if not self.getOptions().daemonize:
+        if not self.getArgs().daemonize:
             self.main()
         else:
             daemon = Daemonize(app=os.path.basename(sys.argv[0]),
-                               pid=self.getOptions().pidfile,
+                               pid=self.getArgs().pidfile,
                                action=self.main,
-                               foreground=not self.getOptions().daemonize)
+                               foreground=not self.getArgs().daemonize)
 
             daemon.start()
 
     def main(self):
+        node_api = NodeApi()
+
         with SignalHandler() as sig_handler:
-            adapter = Gce()
+            with DbManager().session() as session:
+                adapter = Gce()
+                adapter.session = session
 
-            session = adapter._Gce__get_session('default')
+                session = adapter._Gce__get_session('default')
 
-            while not sig_handler.interrupted:
-                deleted_nodes = []
+                while not sig_handler.interrupted:
+                    deleted_nodes = []
 
-                cfg = configparser.ConfigParser()
-                cfg.read(os.path.join(
-                    ConfigManager().getKitConfigBase(),
-                    'gce-instance.conf'))
+                    cfg = configparser.ConfigParser()
+                    cfg.read(os.path.join(
+                        ConfigManager().getKitConfigBase(),
+                        'gce-instance.conf'))
 
-                for node_name in cfg.sections():
-                    instance_name = cfg.get(node_name, 'instance') \
-                        if cfg.has_option(node_name, 'instance') else None
+                    for node_name in cfg.sections():
+                        instance_name = cfg.get(node_name, 'instance') \
+                            if cfg.has_option(node_name, 'instance') else None
 
-                    if instance_name is not None:
-                        instance = adapter._Gce__getInstance(
-                            session, instance_name)
+                        if instance_name is not None:
+                            instance = adapter._Gce__getInstance(
+                                session, instance_name)
 
-                        if instance:
-                            if instance['status'] == 'TERMINATED' and \
-                                    instance['scheduling']['preemptible']:
-                                self._logger.debug(
-                                    'Preemptible instance [{0}]'
-                                    ' terminated'.format(instance_name))
+                            if instance:
+                                if instance['status'] == 'TERMINATED' and \
+                                        instance['scheduling']['preemptible']:
+                                    self._logger.debug(
+                                        'Preemptible instance [{0}]'
+                                        ' terminated'.format(instance_name))
 
-                                deleted_nodes.append(node_name)
+                                    deleted_nodes.append(node_name)
 
-                    if len(deleted_nodes) >= 10:
-                        NodeApi().deleteNode(','.join(deleted_nodes))
+                        if len(deleted_nodes) >= 10:
+                            node_api.deleteNode(','.join(deleted_nodes))
 
-                        deleted_nodes = []
+                            deleted_nodes = []
 
-                if deleted_nodes:
-                    NodeApi().deleteNode(','.join(deleted_nodes))
+                    if deleted_nodes:
+                        node_api.deleteNode(session, ','.join(deleted_nodes))
 
-                time.sleep(self.getOptions().polling_interval)
+                    time.sleep(self.getArgs().polling_interval)
 
         self._logger.debug('Exiting.')
 
 
-if __name__ == '__main__':
+def main():
     AppClass().run()

@@ -58,10 +58,12 @@ setup(
         'google-api-python-client',
         'gevent',
         'requests',
+        'daemonize',
     ],
     entry_points={
         'console_scripts': [
-            'setup-gce=tortuga.resourceAdapter.gceadapter.scripts.setup_gce:main'
+            'setup-gce=tortuga.scripts.setup_gce:main',
+            'gce_monitord=tortuga.scripts.gce_monitord:main',
         ]
     }
 )
