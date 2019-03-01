@@ -335,43 +335,35 @@ n1-highcpu-64,64
 n1-highcpu-96,96
 ```
 
-### Enabling support for preemptible virtual machines
+### Support for preemptible virtual machines
 
-Tortuga supports GCE
-[preemptible virtual machines](https://cloud.google.com/preemptible-vms/)
-through a standalone "helper" daemon in Tortuga called `gce_monitord`.
-This daemon must be enabled/started after configuring the Google Compute
-Engine resource adapter.
+The Google Compute Engine resource adapter supports [Preemptible Virtual Machines](https://cloud.google.com/preemptible-vms/)
+through a standalone "helper" service in Tortuga called `gce_monitord`.
 
-`gce_monitord` will poll GCE resources every 60s monitoring
+This service must be manually enabled and started after configuring the Google
+Compute Engine resource adapter.
+
+`gce_monitord` will poll GCE resources every 300s (default) monitoring
 preemptible virtual machines that may have been terminted by Google Compute
-Engine. These nodes will be automatically removed from the Tortuga-managed
-cluster.
+Engine. These nodes will be automatically removed from Tortuga.
 
 **Note:** `gce_monitord` will *only* monitor GCE VM
 instances created/launched by Tortuga.
 
-Enable support for preemptible virtual machines:
+#### Enable support for preemptible virtual machines
 
 1. Configure GCE resource adapter
 2. Enable and start `gce_monitord`
 
-    RHEL/CentOS 7
-
     ```shell
     systemctl enable gce_monitord
     systemctl start gce_monitord
-    ```
 
-    RHEL/CentOS 6
+Output of `gce_monitord` service can be displayed through `journalctl`.
 
-    ```shell
-    chkconfig gce_monitord on
-    service gce_monitord start
-    ```
+#### Adding preemptible nodes
 
-Once preemptible support has been enabled, add nodes to Tortuga using the
-"--extra-arg preemptible" option. For example:
+Add nodes to Tortuga using the "--extra-arg preemptible" option.
 
 ```shell
 add-nodes --software-profile execd --hardware-profile execd \
