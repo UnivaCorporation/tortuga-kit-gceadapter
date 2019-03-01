@@ -1045,21 +1045,6 @@ dns_nameservers = %(dns_nameservers)s
 
         return None
 
-    def __get_instance_external_ip(self, instance): \
-            # pylint: disable=no-self-use
-        for network_interface in instance['networkInterfaces']:
-            access_configs = network_interface.get('accessConfigs')
-            if not access_configs:
-                continue
-
-            for accessConfig in access_configs:
-                if accessConfig['kind'] == 'compute#accessConfig':
-                    if accessConfig['name'] == 'External NAT' and \
-                            accessConfig['type'] == 'ONE_TO_ONE_NAT':
-                        return accessConfig['natIP']
-
-        return None
-
     def __addActiveNodes(self, session: dict, dbSession: Session,
                          addNodesRequest: dict,
                          dbHardwareProfile: HardwareProfile,
