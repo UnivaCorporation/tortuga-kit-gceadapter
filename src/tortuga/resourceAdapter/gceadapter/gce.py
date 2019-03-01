@@ -1025,7 +1025,7 @@ dns_nameservers = %(dns_nameservers)s
         node.state = state.NODE_STATE_INSTALLED
 
         internal_ip = self.__get_instance_internal_ip(
-            self.__getInstance(session, instance_name)
+            self.gce_get_vm(session, instance_name)
         )
 
         node.nics.append(Nic(ip=internal_ip, boot=True))
