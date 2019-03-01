@@ -12,15 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# pylint: disable=no-member
-
 import json
 import os.path
 import random
 import re
 import shlex
 import subprocess
-import threading
 import time
 import urllib.parse
 from typing import Any, Dict, List, Optional, Tuple
@@ -32,6 +29,7 @@ from gevent.queue import JoinableQueue
 from google.auth import compute_engine
 from google.oauth2 import service_account
 from sqlalchemy.orm.session import Session
+
 from tortuga.db.models.hardwareProfile import HardwareProfile
 from tortuga.db.models.instanceMapping import InstanceMapping
 from tortuga.db.models.instanceMetadata import InstanceMetadata
@@ -45,7 +43,8 @@ from tortuga.exceptions.nodeNotFound import NodeNotFound
 from tortuga.exceptions.operationFailed import OperationFailed
 from tortuga.exceptions.unsupportedOperation import UnsupportedOperation
 from tortuga.node import state
-from tortuga.resourceAdapter.resourceAdapter import ResourceAdapter
+from tortuga.resourceAdapter.resourceAdapter import (DEFAULT_CONFIGURATION_PROFILE_NAME,
+                                                     ResourceAdapter)
 from tortuga.resourceAdapter.utility import get_provisioning_hwprofilenetwork
 from tortuga.resourceAdapterConfiguration import settings
 from tortuga.utility.cloudinit import get_cloud_init_path
@@ -192,10 +191,6 @@ class Gce(ResourceAdapter): \
     def __init__(self, addHostSession: Optional[str] = None):
         super(Gce, self).__init__(addHostSession=addHostSession)
 
-        self.__session_map_lock = threading.Lock()
-        self.__session_map = {}
-        self.__session_lock = threading.Lock()
-
         self.__running_on_gce = None
 
     @property
@@ -204,37 +199,6 @@ class Gce(ResourceAdapter): \
             self.__running_on_gce = is_running_on_gce()
 
         return self.__running_on_gce
-
-    def __get_session(self, profile_name: str):
-        """Return Google Compute session"""
-
-        # Check 'session_map' for existing session
-        self.__session_map_lock.acquire()
-
-        if profile_name in self.__session_map:
-            self._logger.debug(
-                'Found session for profile [%s]' % (profile_name))
-
-            session = self.__session_map[profile_name]
-        else:
-            self._logger.debug(
-                'Initializing session for profile [%s]' % (
-                    profile_name))
-
-            session = self.__init_session(profile_name)
-
-            self.__session_map[profile_name] = session
-
-        self.__session_lock.acquire()
-
-        self.__session_map_lock.release()
-
-        return session
-
-    def __release_session(self):
-        self._logger.debug('Unlocking session lock')
-
-        self.__session_lock.release()
 
     def start(self, addNodesRequest: dict, dbSession: Session,
               dbHardwareProfile: HardwareProfile,
@@ -247,27 +211,23 @@ class Gce(ResourceAdapter): \
         :raises: InvalidArgument
         """
 
-        session = self.__get_session(
-            addNodesRequest.get('resource_adapter_configuration')
+        session = self.__get_gce_session(
+            addNodesRequest.get('resource_adapter_configuration'))
+
+        # Add regular instance-backed (active) nodes
+        nodes = self.__addActiveNodes(
+            session,
+            dbSession,
+            addNodesRequest,
+            dbHardwareProfile,
+            dbSoftwareProfile
         )
 
-        try:
-            # Add regular instance-backed (active) nodes
-            nodes = self.__addActiveNodes(
-                session,
-                dbSession,
-                addNodesRequest,
-                dbHardwareProfile,
-                dbSoftwareProfile
-            )
+        # This is a necessary evil for the time being, until there's
+        # a proper context manager implemented.
+        self.addHostApi.clear_session_nodes(nodes)
 
-            # This is a necessary evil for the time being, until there's
-            # a proper context manager implemented.
-            self.addHostApi.clear_session_nodes(nodes)
-
-            return nodes
-        finally:
-            self.__release_session()
+        return nodes
 
     def validate_start_arguments(self, addNodesRequest, dbHardwareProfile,
                                  dbSoftwareProfile):
@@ -310,18 +270,15 @@ class Gce(ResourceAdapter): \
                 )
                 continue
 
-            gce_session = self.__get_session(
+            gce_session = self.__get_gce_session(
                 node.instance.resource_adapter_configuration.name)
 
-            try:
-                self.__deleteInstance(gce_session, node)
+            self.__deleteInstance(gce_session, node)
 
-                self.__node_cleanup(node)
+            self.__node_cleanup(node)
 
-                # Update SAN API
-                self.__process_deleted_disk_changes(node)
-            finally:
-                self.__release_session()
+            # Update SAN API
+            self.__process_deleted_disk_changes(node)
 
     def __get_project_and_zone_metadata(self, node: Node) -> Tuple[str, str]:
         project = None
@@ -512,7 +469,9 @@ class Gce(ResourceAdapter): \
 
         return metadata
 
-    def __init_session(self, section_name):
+    def __get_gce_session(
+            self,
+            section_name: Optional[str]) -> dict:
         """
         Initialize session (authorize with Google Compute Engine, etc)
 
@@ -520,15 +479,16 @@ class Gce(ResourceAdapter): \
         :raises ResourceNotFound:
         """
 
-        session = {}
-
-        session['config'] = self.getResourceAdapterConfig(section_name)
-
-        session['connection'] = gceAuthorize_from_json(
-            session['config'].get('json_keyfile')
+        adapter_cfg = self.getResourceAdapterConfig(
+            section_name or DEFAULT_CONFIGURATION_PROFILE_NAME
         )
 
-        return session
+        return {
+            'config': adapter_cfg,
+            'connection': gceAuthorize_from_json(
+                adapter_cfg.get('json_keyfile')
+            ),
+        }
 
     def __getStartupScript(self, configDict):
         """
@@ -1485,61 +1445,58 @@ dns_nameservers = %(dns_nameservers)s
             self._logger.debug(
                 'rebootNode(): node=[%s]' % (node.name))
 
-            gce_session = self.__get_session(
+            gce_session = self.__get_gce_session(
                 node.instance.resource_adapter_configuration.name
             )
 
-            try:
-                instance_name = get_instance_name_from_host_name(node.name)
+            instance_name = get_instance_name_from_host_name(node.name)
 
-                project, zone = self.__get_project_and_zone_metadata(
-                    node
+            project, zone = self.__get_project_and_zone_metadata(
+                node
+            )
+
+            project_arg = project \
+                if project is not None else \
+                gce_session['config']['project']
+
+            zone_arg = zone if zone is not None else \
+                gce_session['config']['zone']
+
+            try:
+                initial_response = \
+                    gce_session['connection'].svc.instances().reset(
+                        project=project_arg, zone=zone_arg,
+                        instance=instance_name
+                    ).execute()
+
+                self._logger.debug(
+                    'rebootNode(): initial_response=[%s]' % (
+                        initial_response))
+
+                # Wait for instance to be rebooted
+                _blocking_call(
+                    gce_session['connection'].svc,
+                    gce_session['config']['project'],
+                    initial_response,
+                    polling_interval=gce_session['config']['sleeptime']
                 )
 
-                project_arg = project \
-                    if project is not None else \
-                    gce_session['config']['project']
-
-                zone_arg = zone if zone is not None else \
-                    gce_session['config']['zone']
-
-                try:
-                    initial_response = \
-                        gce_session['connection'].svc.instances().reset(
-                            project=project_arg, zone=zone_arg,
-                            instance=instance_name
-                        ).execute()
-
+                self._logger.debug(
+                    f'Instance [{node.name}] rebooted')
+            except apiclient.errors.HttpError as ex:
+                if ex.resp['status'] == '404':
+                    # Specified instance not found; nothing we can do
+                    # there...
+                    self._logger.warning(
+                        'Instance [%s] not found' % (instance_name))
+                else:
                     self._logger.debug(
-                        'rebootNode(): initial_response=[%s]' % (
-                            initial_response))
+                        'rebootNode(): ex.resp=[%s],'
+                        ' ex.content=[%s]' % (ex.resp, ex.content))
 
-                    # Wait for instance to be rebooted
-                    _blocking_call(
-                        gce_session['connection'].svc,
-                        gce_session['config']['project'],
-                        initial_response,
-                        polling_interval=gce_session['config']['sleeptime']
-                    )
-
-                    self._logger.debug(
-                        f'Instance [{node.name}] rebooted')
-                except apiclient.errors.HttpError as ex:
-                    if ex.resp['status'] == '404':
-                        # Specified instance not found; nothing we can do
-                        # there...
-                        self._logger.warning(
-                            'Instance [%s] not found' % (instance_name))
-                    else:
-                        self._logger.debug(
-                            'rebootNode(): ex.resp=[%s],'
-                            ' ex.content=[%s]' % (ex.resp, ex.content))
-
-                        raise CommandFailed(
-                            'Error rebooting Compute Engine instance [%s]' % (
-                                instance_name))
-            finally:
-                self.__release_session()
+                    raise CommandFailed(
+                        'Error rebooting Compute Engine instance [%s]' % (
+                            instance_name))
 
     def get_node_vcpus(self, name):
         """
