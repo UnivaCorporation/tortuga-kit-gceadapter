@@ -588,28 +588,28 @@ dns_nameservers = %(dns_nameservers)s
 
         return result
 
-    def __init_new_node(self, session: dict, dbSession: Session,
-                        dbHardwareProfile: HardwareProfile,
-                        dbSoftwareProfile: SoftwareProfile,
-                        generate_ip: bool) -> Node: \
+    def __init_new_node(self, session: dict,
+                        name: str,
+                        hardwareprofile: HardwareProfile,
+                        softwareprofile: SoftwareProfile,
+                        *,
+                        metadata: Optional[dict] = None) -> Node: \
             # pylint: disable=no-self-use
         # Initialize Node object for insertion into database
 
-        name = self.__generate_node_name(
-            session, dbSession, dbHardwareProfile, generate_ip)
-
-        node = Node(name=name)
-        node.state = state.NODE_STATE_LAUNCHING
-        node.hardwareprofile = dbHardwareProfile
-        node.softwareprofile = dbSoftwareProfile
-
-        return node
+        return Node(
+            name=name,
+            state=state.NODE_STATE_LAUNCHING,
+            hardwareprofile=hardwareprofile,
+            softwareprofile=softwareprofile,
+            vcpus=metadata.get('vcpus') if metadata else None,
+            addHostSession=self.addHostSession,
+        )
 
     def __createNodes(self, session: dict, dbSession: Session,
-                      addNodesRequest: dict,
                       dbHardwareProfile: HardwareProfile,
-                      dbSoftwareProfile: SoftwareProfile,
-                      generate_ip: Optional[bool] = True) -> List[Node]: \
+                      dbSoftwareProfile: SoftwareProfile, *,
+                      count: int = 1) -> List[Node]: \
             # pylint: disable=unused-argument
         """
         Raises:
@@ -619,48 +619,31 @@ dns_nameservers = %(dns_nameservers)s
 
         self._logger.debug('__createNodes()')
 
-        nodeCount = addNodesRequest['count'] \
-            if 'count' in addNodesRequest else 1
+        # use resource adapter 'vcpus' override, otherwise fallback to
+        # vm type-based lookup
+        vcpus = session['config'].get('vcpus')
+        if vcpus is None:
+            vcpus = self.get_instance_size_mapping(session['config']['type'])
 
-        nodeList: List[Node] = []
-
-        for _ in range(nodeCount):
-            # Initialize new Node object
-            node = self.__init_new_node(
+        # return list of newly initialized nodes
+        return [
+            self.__init_new_node(
                 session,
-                dbSession,
+                self.__generate_node_name(
+                    session, dbSession, dbHardwareProfile
+                ),
                 dbHardwareProfile,
                 dbSoftwareProfile,
-                generate_ip=generate_ip)
-
-            node.addHostSession = self.addHostSession
-
-            # Add NIC to new node
-            if generate_ip:
-                # Use provisioning network from hardware profile
-                hardwareprofilenetwork = get_provisioning_hwprofilenetwork(
-                    dbHardwareProfile)
-
-                ip = self.addHostApi.generate_provisioning_ip_address(
-                    hardwareprofilenetwork.network)
-
-                nic = Nic(ip=ip, boot=True)
-                nic.networkId = hardwareprofilenetwork.network.id
-                nic.network = hardwareprofilenetwork.network
-                nic.networkdevice = hardwareprofilenetwork.networkdevice
-                nic.networkDeviceId = hardwareprofilenetwork.networkDeviceId
-
-                node.nics = [nic]
-
-            nodeList.append(node)
-
-        return nodeList
+                metadata={
+                    'vcpus': vcpus,
+                },
+            ) for _ in range(count)
+        ]
 
     def __generate_node_name(self, session: dict, dbSession: Session,
-                             hardwareprofile: HardwareProfile,
-                             generate_ip: bool):
+                             hardwareprofile: HardwareProfile):
         fqdn = self.addHostApi.generate_node_name(
-            dbSession, hardwareprofile.nameFormat, randomize=not generate_ip,
+            dbSession, hardwareprofile.nameFormat, randomize=True,
             dns_zone=self.private_dns_zone)
 
         hostname, _ = fqdn.split('.', 1)
@@ -940,12 +923,41 @@ dns_nameservers = %(dns_nameservers)s
 
         return persistent_disks
 
+    def __mark_node_request_failed(self, node_request: dict,
+                                   status: str = 'error',
+                                   message: Optional[str] = None) -> None:
+        node_request['status'] = 'error'
+        if message:
+            node_request['message'] = message
+
     def __wait_for_instance(self, session, pending_node_request):
         try:
             if gevent_wait_for_instance(session, pending_node_request):
                 # VM launched successfully
-                self.__instance_post_launch(session, pending_node_request)
+                try:
+                    self.__instance_post_launch(session, pending_node_request)
+                except Exception as exc:  # noqa pylint: disable=broad-except
+                    msg = 'Internal error: post-launch action for VM [%s]' % (
+                        pending_node_request['instance_name']
+                    )
+
+                    # instance post-launch action raised an exception
+                    self._logger.error(msg)
+
+                    self.__mark_node_request_failed(
+                        pending_node_request,
+                        message='{} (exception {}: {})'.format(
+                            msg, exc.__class__.__name__, exc
+                        )
+                    )
+
+                    # delete vm
+                    self.__deleteInstance(
+                        session,
+                        pending_node_request['node']
+                    )
             else:
+                # vm failed to launch successfully
                 result = pending_node_request['result']
 
                 logmsg = ', '.join(
@@ -956,15 +968,19 @@ dns_nameservers = %(dns_nameservers)s
 
                 self._logger.error('%s' % (errmsg))
 
-                pending_node_request['status'] = 'error'
-                pending_node_request['message'] = logmsg
+                self.__mark_node_request_failed(
+                    pending_node_request,
+                    message=logmsg
+                )
         except Exception as exc:  # noqa pylint: disable=broad-except
             self._logger.exception(
                 '_blocking_call() failed on instance [%s]' % (
                     pending_node_request['instance_name']))
 
-            pending_node_request['status'] = 'error'
-            pending_node_request['message'] = str(exc)
+            self.__mark_node_request_failed(
+                pending_node_request,
+                message=str(exc)
+            )
 
     def wait_worker(self, session, queue):
         # greenlet to wait on queue and process VM launches
@@ -1067,7 +1083,11 @@ dns_nameservers = %(dns_nameservers)s
     def __get_instance_external_ip(self, instance): \
             # pylint: disable=no-self-use
         for network_interface in instance['networkInterfaces']:
-            for accessConfig in network_interface['accessConfigs']:
+            access_configs = network_interface.get('accessConfigs')
+            if not access_configs:
+                continue
+
+            for accessConfig in access_configs:
                 if accessConfig['kind'] == 'compute#accessConfig':
                     if accessConfig['name'] == 'External NAT' and \
                             accessConfig['type'] == 'ONE_TO_ONE_NAT':
@@ -1085,24 +1105,23 @@ dns_nameservers = %(dns_nameservers)s
 
         self._logger.debug('__addActiveNodes()')
 
-        # Always default to 1 node if 'count' is missing
-        count = addNodesRequest['count'] if 'count' in addNodesRequest else 1
+        count = addNodesRequest.get('count', 1)
 
         self._logger.info(
-            'Creating %d node(s) for mapping to Compute Engine'
-            ' instance(s)' % (count))
+            'Creating %d node(s) for mapping to Compute Engine instance(s)',
+            count
+        )
 
         # Create node entries in the database
         nodes = self.__createNodes(
-            session, dbSession, addNodesRequest, dbHardwareProfile,
-            dbSoftwareProfile, generate_ip=False)
+            session, dbSession, dbHardwareProfile, dbSoftwareProfile,
+            count=count
+        )
 
         dbSession.add_all(nodes)
         dbSession.commit()
 
-        self._logger.debug(
-            'Allocated node(s): %s' % (
-                ' '.join([tmpnode.name for tmpnode in nodes])))
+        self._logger.debug('Initialized node(s): %s', format_node_list(nodes))
 
         try:
             node_request_queue = self.__build_node_request_queue(nodes)
@@ -1305,18 +1324,32 @@ dns_nameservers = %(dns_nameservers)s
         """
         Parse network(s) from config, return list of dicts containing
         network interface spec
+
+        :raises ConfigurationError:
         """
 
         network_interfaces = []
+
+        primary_intfc = None
 
         for network in networks:
             network_interface, network_flags = \
                 self.__get_network_interface(project, region, network)
 
+            # ensure only one interface is marked as primary
+            primary_value = network_flags.get('primary')
+            if primary_value is not None and primary_value:
+                if primary_intfc is not None:
+                    raise ConfigurationError(
+                        'Only one interface may be primary: {} is already'
+                        ' marked as primary'.format(network[0])
+                    )
+
+                primary_intfc = network
+
             # honor 'ext[ernal]' network configuration flag
-            if 'external' in network_flags and network_flags['external']:
-                network_interface['accessConfigs'] = \
-                    EXTERNAL_NETWORK_ACCESS_CONFIG
+            if is_network_flag_set(network_flags, flag='external'):
+                set_external_network_access(network_interface)
 
             network_interfaces.append(network_interface)
 
@@ -1790,42 +1823,70 @@ def split_three_item_value(value) -> Tuple[str, Optional[str], Optional[str]]:
     return value, None, None
 
 
-def get_network_flags(network_args):
+def get_network_flags(network_args: str) -> Dict[str, Any]:
+    """Parse network flags (options) from network configuration.
+
+    Flags are processed in order... last one takes prescedence
+
+    :raises ConfigurationError:
+    """
+
     if network_args is None:
         return {}
 
     result = {}
 
     for network_arg in network_args.split(';'):
+        if not network_arg:
+            # handle empty network args
+            continue
+
         if network_arg.lower().startswith('ext'):
             result['external'] = True
         elif network_arg.lower().startswith('noext'):
             result['external'] = False
         elif network_arg.lower().startswith('pri'):
             result['primary'] = True
+        else:
+            raise ConfigurationError(
+                'Invalid network flag: [{}]'.format(network_arg)
+            )
 
     return result
 
 
+def set_external_network_access(network_interface):
+    network_interface['accessConfigs'] = EXTERNAL_NETWORK_ACCESS_CONFIG
+
+
+def is_network_flag_set(network_flags, *, flag: str, default: bool = False):
+    return network_flags.get(flag, default)
+
+
 def enable_external_network_access(networks, network_interfaces):
-    if len(networks) != 1:
+    """Enable 'external' access (public IP) if only one network interface is
+    defined and if network is 'default' or not external access is not
+    explicitly set.
+    """
+
+    if len(networks) != 1 or not network_interfaces:
         return
 
     network_def, _, network_args = networks[0]
 
-    network_flags = get_network_flags(network_args)
+    if network_def == 'default' or \
+            is_network_flag_set(
+                get_network_flags(network_args),
+                flag='external',
+                default=True
+            ):
+        set_external_network_access(network_interfaces[0])
 
-    if network_def == 'default' and \
-            not network_args or \
-            (network_args and
-             'external' in network_flags and
-             network_flags['external']):
-        # ensure at least one interface has internet access enabled
-        for network_interface in network_interfaces:
-            if 'accessConfigs' in network_interface:
-                # network configuration contains interface with external
-                # (internet) access
-                break
-        else:
-            network_interfaces[0]['accessConfigs'] = \
-                EXTERNAL_NETWORK_ACCESS_CONFIG
+
+def format_node_list(nodes: List[Node]) -> str:
+    """Format list of Node objects suitable for user output or logging
+    """
+    if len(nodes) > 3:
+        return '{}..{}'.format(nodes[0].name, nodes[-1].name)
+
+    return ' '.join([node.name for node in nodes])
