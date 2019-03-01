@@ -18,9 +18,7 @@ After=syslog.target network.target auditd.service
 
 [Service]
 Type=simple
-PIDFile=/var/run/gce_monitord.pid
-ExecStart=<%= @instroot -%>/bin/gce_monitord --pidfile /var/run/gce_monitord.pid
-KillMode=process
+ExecStart=<%= @instroot -%>/bin/gce_monitord
 
 [Install]
 WantedBy=multi-user.target
