@@ -30,7 +30,7 @@ from tortuga.wsapi.metadataWsApi import MetadataWsApi
 from tortuga.wsapi.nodeWsApi import NodeWsApi
 
 
-POLLING_INTERVAL = 60
+POLLING_INTERVAL = 300
 
 PIDFILE = '/var/run/gce_monitord.pid'
 
