@@ -588,28 +588,28 @@ dns_nameservers = %(dns_nameservers)s
 
         return result
 
-    def __init_new_node(self, session: dict, dbSession: Session,
-                        dbHardwareProfile: HardwareProfile,
-                        dbSoftwareProfile: SoftwareProfile,
-                        generate_ip: bool) -> Node: \
+    def __init_new_node(self, session: dict,
+                        name: str,
+                        hardwareprofile: HardwareProfile,
+                        softwareprofile: SoftwareProfile,
+                        *,
+                        metadata: Optional[dict] = None) -> Node: \
             # pylint: disable=no-self-use
         # Initialize Node object for insertion into database
 
-        name = self.__generate_node_name(
-            session, dbSession, dbHardwareProfile, generate_ip)
-
-        node = Node(name=name)
-        node.state = state.NODE_STATE_LAUNCHING
-        node.hardwareprofile = dbHardwareProfile
-        node.softwareprofile = dbSoftwareProfile
-
-        return node
+        return Node(
+            name=name,
+            state=state.NODE_STATE_LAUNCHING,
+            hardwareprofile=hardwareprofile,
+            softwareprofile=softwareprofile,
+            vcpus=metadata.get('vcpus') if metadata else None,
+            addHostSession=self.addHostSession,
+        )
 
     def __createNodes(self, session: dict, dbSession: Session,
-                      addNodesRequest: dict,
                       dbHardwareProfile: HardwareProfile,
-                      dbSoftwareProfile: SoftwareProfile,
-                      generate_ip: Optional[bool] = True) -> List[Node]: \
+                      dbSoftwareProfile: SoftwareProfile, *,
+                      count: int = 1) -> List[Node]: \
             # pylint: disable=unused-argument
         """
         Raises:
@@ -619,48 +619,31 @@ dns_nameservers = %(dns_nameservers)s
 
         self._logger.debug('__createNodes()')
 
-        nodeCount = addNodesRequest['count'] \
-            if 'count' in addNodesRequest else 1
+        # use resource adapter 'vcpus' override, otherwise fallback to
+        # vm type-based lookup
+        vcpus = session['config'].get('vcpus')
+        if vcpus is None:
+            vcpus = self.get_instance_size_mapping(session['config']['type'])
 
-        nodeList: List[Node] = []
-
-        for _ in range(nodeCount):
-            # Initialize new Node object
-            node = self.__init_new_node(
+        # return list of newly initialized nodes
+        return [
+            self.__init_new_node(
                 session,
-                dbSession,
+                self.__generate_node_name(
+                    session, dbSession, dbHardwareProfile
+                ),
                 dbHardwareProfile,
                 dbSoftwareProfile,
-                generate_ip=generate_ip)
-
-            node.addHostSession = self.addHostSession
-
-            # Add NIC to new node
-            if generate_ip:
-                # Use provisioning network from hardware profile
-                hardwareprofilenetwork = get_provisioning_hwprofilenetwork(
-                    dbHardwareProfile)
-
-                ip = self.addHostApi.generate_provisioning_ip_address(
-                    hardwareprofilenetwork.network)
-
-                nic = Nic(ip=ip, boot=True)
-                nic.networkId = hardwareprofilenetwork.network.id
-                nic.network = hardwareprofilenetwork.network
-                nic.networkdevice = hardwareprofilenetwork.networkdevice
-                nic.networkDeviceId = hardwareprofilenetwork.networkDeviceId
-
-                node.nics = [nic]
-
-            nodeList.append(node)
-
-        return nodeList
+                metadata={
+                    'vcpus': vcpus,
+                },
+            ) for _ in range(count)
+        ]
 
     def __generate_node_name(self, session: dict, dbSession: Session,
-                             hardwareprofile: HardwareProfile,
-                             generate_ip: bool):
+                             hardwareprofile: HardwareProfile):
         fqdn = self.addHostApi.generate_node_name(
-            dbSession, hardwareprofile.nameFormat, randomize=not generate_ip,
+            dbSession, hardwareprofile.nameFormat, randomize=True,
             dns_zone=self.private_dns_zone)
 
         hostname, _ = fqdn.split('.', 1)
@@ -1122,24 +1105,23 @@ dns_nameservers = %(dns_nameservers)s
 
         self._logger.debug('__addActiveNodes()')
 
-        # Always default to 1 node if 'count' is missing
-        count = addNodesRequest['count'] if 'count' in addNodesRequest else 1
+        count = addNodesRequest.get('count', 1)
 
         self._logger.info(
-            'Creating %d node(s) for mapping to Compute Engine'
-            ' instance(s)' % (count))
+            'Creating %d node(s) for mapping to Compute Engine instance(s)',
+            count
+        )
 
         # Create node entries in the database
         nodes = self.__createNodes(
-            session, dbSession, addNodesRequest, dbHardwareProfile,
-            dbSoftwareProfile, generate_ip=False)
+            session, dbSession, dbHardwareProfile, dbSoftwareProfile,
+            count=count
+        )
 
         dbSession.add_all(nodes)
         dbSession.commit()
 
-        self._logger.debug(
-            'Allocated node(s): %s' % (
-                ' '.join([tmpnode.name for tmpnode in nodes])))
+        self._logger.debug('Initialized node(s): %s', format_node_list(nodes))
 
         try:
             node_request_queue = self.__build_node_request_queue(nodes)
@@ -1899,3 +1881,12 @@ def enable_external_network_access(networks, network_interfaces):
                 default=True
             ):
         set_external_network_access(network_interfaces[0])
+
+
+def format_node_list(nodes: List[Node]) -> str:
+    """Format list of Node objects suitable for user output or logging
+    """
+    if len(nodes) > 3:
+        return '{}..{}'.format(nodes[0].name, nodes[-1].name)
+
+    return ' '.join([node.name for node in nodes])
