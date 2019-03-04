@@ -105,7 +105,7 @@ class Gce(ResourceAdapter): \
         'networks': settings.StringSetting(
             list=True,
             required=False,
-            description='List of networks where virtual machines will be created',
+            description='Networks associated with virtual machines',
             mutually_exclusive=['network'],
             overrides=['network'],
         ),
