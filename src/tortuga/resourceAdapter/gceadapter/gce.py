@@ -185,6 +185,11 @@ class Gce(ResourceAdapter): \
             description='Use SSD backed virtual machines',
             default='True',
         ),
+        'randomize_hostname': settings.BooleanSetting(
+            description='Append random string to generated host names'
+            'to prevent name collisions in highly dynamic environments',
+            default='True',
+        ),
     }
 
     def __init__(self, addHostSession: Optional[str] = None):
@@ -604,7 +609,8 @@ dns_nameservers = %(dns_nameservers)s
     def __generate_node_name(self, session: dict, dbSession: Session,
                              hardwareprofile: HardwareProfile) -> str:
         fqdn = self.addHostApi.generate_node_name(
-            dbSession, hardwareprofile.nameFormat, randomize=True,
+            dbSession, hardwareprofile.nameFormat,
+            randomize=session['config']['randomize_hostname'],
             dns_zone=self.private_dns_zone)
 
         hostname, _ = fqdn.split('.', 1)
