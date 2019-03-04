@@ -331,11 +331,87 @@ class Gce(ResourceAdapter): \
         # Update SAN API
         self.__process_deleted_disk_changes(node)
 
+    def __get_gce_session_for_node(self, node: Node):
+        gce_session = self.get_gce_session(
+            node.instance.resource_adapter_configuration.name
+        )
+
+        project, zone = self.__get_project_and_zone_metadata(node)
+
+        if zone and zone != gce_session['config']['zone']:
+            gce_session['config']['zone'] = zone
+
+        if project and project != gce_session['config']['project']:
+            gce_session['config']['project'] = project
+
+        return gce_session
+
+    def shutdownNode(self, nodes: List[Node],
+                     bSoftReset: bool = False) -> None:
+        self._logger.debug(
+            'shutdownNode(): nodes=[%s], bSoftReset=%s',
+            format_node_list(nodes),
+            bSoftReset
+        )
+
+        for node in nodes:
+            vm_name = get_instance_name_from_host_name(node.name)
+
+            gce_session = self.__get_gce_session_for_node(node)
+
+            self._logger.debug('Stopping node [%s]...', node.name)
+
+            # issue async shutdown request
+            self.__gce_stop_vm(
+                gce_session['connection'].svc,
+                vm_name,
+                gce_session['config']['project'],
+                gce_session['config']['zone']
+            )
+
+    def __gce_stop_vm(self, svc: googleapiclient.discovery.Resource,
+                      vm_name: str, project: str, zone: str): \
+            # pylint: disable=no-self-use
+        svc.instances().stop(
+            instance=vm_name,
+            project=project,
+            zone=zone
+        ).execute()
+
     def startupNode(self, nodes: List[Node],
                     remainingNodeList: Optional[str] = None,
                     tmpBootMethod: str = 'n'): \
             # pylint: disable=unused-argument
-        """TODO: not implemented"""
+        self._logger.debug(
+            'startupNode(): nodes=[%s], remainingNodeList=[%s],'
+            ' tmpBootMethod=[%s]',
+            format_node_list(nodes),
+            remainingNodeList,
+            tmpBootMethod,
+        )
+
+        for node in nodes:
+            vm_name = get_instance_name_from_host_name(node.name)
+
+            gce_session = self.__get_gce_session_for_node(node)
+
+            self._logger.debug('Starting node [%s]...', node.name)
+
+            # issue async start request
+            self.__gce_start_vm(
+                gce_session['connection'].svc,
+                vm_name,
+                gce_session['config']['project'],
+                gce_session['config']['zone']
+            )
+
+    def __gce_start_vm(self, svc, vm_name, project, zone): \
+            # pylint: disable=no-self-use
+        svc.instances().start(
+            instance=vm_name,
+            project=project,
+            zone=zone,
+        ).execute()
 
     def __validate_default_scopes(self, default_scopes: List[str]) -> None:
         """
