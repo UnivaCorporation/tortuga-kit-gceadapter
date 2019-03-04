@@ -154,9 +154,6 @@ class Gce(ResourceAdapter): \
             description='Size of boot disk for virtual machine (in GB)',
             default='10'
         ),
-        'metadata': settings.StringSetting(
-            advanced=True
-        ),
         'sleeptime': settings.IntegerSetting(
             advanced=True,
             default=str(DEFAULT_SLEEP_TIME)
@@ -465,11 +462,6 @@ class Gce(ResourceAdapter): \
         config['tags'] = self._parse_custom_tags(config)
 
         #
-        # Parse custom metadata
-        #
-        config['metadata'] = self._parse_custom_metadata(config)
-
-        #
         # DNS settings
         #
         config['dns_domain'] = config['dns_domain'] \
@@ -534,37 +526,6 @@ class Gce(ResourceAdapter): \
                 raise ConfigurationError(errmsg)
 
         return tags
-
-    def _parse_custom_metadata(self, _configDict: dict) -> dict:
-        """
-        Raises:
-            ConfigurationError
-        """
-
-        metadata = {}
-
-        regex = re.compile(r'[a-zA-Z0-9-_]{1,128}')
-
-        if 'metadata' in _configDict and _configDict['metadata']:
-            # Support tag names/values containing spaces and tags without
-            # value.
-            for tagdef in shlex.split(_configDict['metadata']):
-                key, value = tagdef.split(':', 1) \
-                    if ':' in tagdef else (tagdef, '')
-
-                result = regex.match(key)
-
-                if result is None or result.group(0) != key:
-                    errmsg = ('Metadata key [%s] must match regex'
-                              ' \'[a-zA-Z0-9-_]{1,128}\'' % (key))
-
-                    self._logger.error(errmsg)
-
-                    raise ConfigurationError(errmsg)
-
-                metadata = value
-
-        return metadata
 
     def get_gce_session(
             self,
