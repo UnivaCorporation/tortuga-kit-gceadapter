@@ -1124,12 +1124,25 @@ dns_nameservers = %(dns_nameservers)s
         instance_name = node_request['instance_name']
         node = node_request['node']
 
+        vm_inst = self.gce_get_vm(session, instance_name)
+        if vm_inst is None:
+            self._logger.error(
+                'VM [%s] went away after launching; nothing to do',
+                instance_name
+            )
+
+            return
+
         # Create nics for instance
         node.state = state.NODE_STATE_INSTALLED
 
-        internal_ip = self.__get_instance_internal_ip(
-            self.gce_get_vm(session, instance_name)
-        )
+        internal_ip = self.__get_instance_internal_ip(vm_inst)
+        if internal_ip is None:
+            self._logger.error(
+                'VM [%s] does not have an IP address (???)', vm_inst
+            )
+
+            return
 
         node.nics.append(Nic(ip=internal_ip, boot=True))
 
