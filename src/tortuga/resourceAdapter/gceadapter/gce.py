@@ -287,6 +287,9 @@ class Gce(ResourceAdapter): \
 
     def __get_project_and_zone_metadata(self, node: Node) \
             -> Tuple[Optional[str], Optional[str]]:
+        """Get project and/or zone from instance metadata
+        """
+
         project = None
         zone = None
 
@@ -336,7 +339,11 @@ class Gce(ResourceAdapter): \
         # Update SAN API
         self.__process_deleted_disk_changes(node)
 
-    def __get_gce_session_for_node(self, node: Node):
+    def __get_gce_session_for_node(self, node: Node) -> dict:
+        """Returns GCE session object with project and/or zone properly
+        defined based on existing node metadata.
+        """
+
         gce_session = self.get_gce_session(
             node.instance.resource_adapter_configuration.name
         )
@@ -353,6 +360,13 @@ class Gce(ResourceAdapter): \
 
     def shutdownNode(self, nodes: List[Node],
                      bSoftReset: bool = False) -> None:
+        """Shutdown (stop) VMs
+
+        TODO: implement this as an async operation to ensure shutdown
+        operation succeeds. Currently, the async request is made to the GCE
+        backend and control is returned to the caller.
+        """
+
         self._logger.debug(
             'shutdownNode(): nodes=[%s], bSoftReset=%s',
             format_node_list(nodes),
@@ -387,6 +401,9 @@ class Gce(ResourceAdapter): \
                     remainingNodeList: Optional[str] = None,
                     tmpBootMethod: str = 'n'): \
             # pylint: disable=unused-argument
+        """Start stopped VMs
+        """
+
         self._logger.debug(
             'startupNode(): nodes=[%s], remainingNodeList=[%s],'
             ' tmpBootMethod=[%s]',
@@ -1522,13 +1539,13 @@ dns_nameservers = %(dns_nameservers)s
     def rebootNode(self, nodes: List[Node],
                    bSoftReset: bool = False) -> None: \
             # pylint: disable=unused-argument
-        """
-        Reboot the given node
+        """Reboot the given node
+
+        TODO: this should be an async task
         """
 
         for node in nodes:
-            self._logger.debug(
-                'rebootNode(): node=[%s]' % (node.name))
+            self._logger.debug('rebootNode(): node=[%s]' % (node.name))
 
             gce_session = self.get_gce_session(
                 node.instance.resource_adapter_configuration.name
@@ -1566,8 +1583,7 @@ dns_nameservers = %(dns_nameservers)s
                     polling_interval=gce_session['config']['sleeptime']
                 )
 
-                self._logger.debug(
-                    f'Instance [{node.name}] rebooted')
+                self._logger.debug(f'Instance [{node.name}] rebooted')
             except apiclient.errors.HttpError as ex:
                 if ex.resp['status'] == '404':
                     # Specified instance not found; nothing we can do
