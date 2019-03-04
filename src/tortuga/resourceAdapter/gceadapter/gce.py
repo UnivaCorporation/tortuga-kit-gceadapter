@@ -43,8 +43,8 @@ from tortuga.exceptions.nodeNotFound import NodeNotFound
 from tortuga.exceptions.operationFailed import OperationFailed
 from tortuga.exceptions.unsupportedOperation import UnsupportedOperation
 from tortuga.node import state
-from tortuga.resourceAdapter.resourceAdapter import (DEFAULT_CONFIGURATION_PROFILE_NAME,
-                                                     ResourceAdapter)
+from tortuga.resourceAdapter.resourceAdapter \
+    import (DEFAULT_CONFIGURATION_PROFILE_NAME, ResourceAdapter)
 from tortuga.resourceAdapterConfiguration import settings
 from tortuga.utility.cloudinit import get_cloud_init_path
 
@@ -832,14 +832,16 @@ dns_nameservers = %(dns_nameservers)s
                     )
                 )
 
+            adapter_cfg = self.load_resource_adapter_config(
+                dbSession,
+                addNodesRequest.get('resource_adapter_configuration')
+            )
+
             # Update persistent mapping of node -> instance
             node_request['node'].instance = InstanceMapping(
                 instance=node_request['instance_name'],
                 instance_metadata=instance_metadata,
-                resource_adapter_configuration=self.load_resource_adapter_config(
-                    dbSession,
-                    addNodesRequest.get('resource_adapter_configuration')
-                )
+                resource_adapter_configuration=adapter_cfg
             )
 
         # Wait for instances to launch
