@@ -20,7 +20,7 @@ import shlex
 import subprocess
 import time
 import urllib.parse
-from typing import Any, Dict, List, Optional, Tuple, Callable
+from typing import Any, Callable, Dict, List, NoReturn, Optional, Tuple
 
 import apiclient
 import gevent
@@ -45,7 +45,6 @@ from tortuga.exceptions.unsupportedOperation import UnsupportedOperation
 from tortuga.node import state
 from tortuga.resourceAdapter.resourceAdapter import (DEFAULT_CONFIGURATION_PROFILE_NAME,
                                                      ResourceAdapter)
-from tortuga.resourceAdapter.utility import get_provisioning_hwprofilenetwork
 from tortuga.resourceAdapterConfiguration import settings
 from tortuga.utility.cloudinit import get_cloud_init_path
 
@@ -189,12 +188,12 @@ class Gce(ResourceAdapter): \
     }
 
     def __init__(self, addHostSession: Optional[str] = None):
-        super(Gce, self).__init__(addHostSession=addHostSession)
+        super().__init__(addHostSession=addHostSession)
 
-        self.__running_on_gce = None
+        self.__running_on_gce: Optional[bool] = None
 
     @property
-    def is_running_on_gce(self):
+    def is_running_on_gce(self) -> bool:
         if self.__running_on_gce is None:
             self.__running_on_gce = is_running_on_gce()
 
@@ -229,8 +228,9 @@ class Gce(ResourceAdapter): \
 
         return nodes
 
-    def validate_start_arguments(self, addNodesRequest, dbHardwareProfile,
-                                 dbSoftwareProfile):
+    def validate_start_arguments(self, addNodesRequest: dict,
+                                 dbHardwareProfile: HardwareProfile,
+                                 dbSoftwareProfile: SoftwareProfile) -> None:
         """
         Validate arguments to start() API
 
@@ -280,7 +280,8 @@ class Gce(ResourceAdapter): \
             # Update SAN API
             self.__process_deleted_disk_changes(node)
 
-    def __get_project_and_zone_metadata(self, node: Node) -> Tuple[str, str]:
+    def __get_project_and_zone_metadata(self, node: Node) \
+            -> Tuple[Optional[str], Optional[str]]:
         project = None
         zone = None
 
@@ -293,7 +294,7 @@ class Gce(ResourceAdapter): \
 
         return project, zone
 
-    def __process_deleted_disk_changes(self, node):
+    def __process_deleted_disk_changes(self, node: Node) -> None:
         """Remove persistent disks from SAN API 'catalog'.
 
         Note: this does *NOT* remove the persistent disk from Google Compute
@@ -321,7 +322,7 @@ class Gce(ResourceAdapter): \
 
             self.sanApi.deleteDrive(node, removedDiskNumber)
 
-    def __node_cleanup(self, node: Node):
+    def __node_cleanup(self, node: Node) -> None:
         self._logger.debug(
             '__node_cleanup(): node=[%s]' % (node.name))
 
@@ -332,11 +333,11 @@ class Gce(ResourceAdapter): \
 
     def startupNode(self, nodes: List[Node],
                     remainingNodeList: Optional[str] = None,
-                    tmpBootMethod: Optional[str] = 'n'): \
+                    tmpBootMethod: str = 'n'): \
             # pylint: disable=unused-argument
         """TODO: not implemented"""
 
-    def __validate_default_scopes(self, default_scopes):
+    def __validate_default_scopes(self, default_scopes: List[str]) -> None:
         """
         Raises:
             ConfigurationError
@@ -355,7 +356,7 @@ class Gce(ResourceAdapter): \
                 raise ConfigurationError(
                     'Invalid URL [%s] specified in default_scopes' % (url))
 
-    def process_config(self, config: Dict[str, Any]):
+    def process_config(self, config: Dict[str, Any]) -> None:
         #
         # Sanity check default scopes
         #
@@ -409,10 +410,11 @@ class Gce(ResourceAdapter): \
 
         config['networks'] = self.__parse_network_adapter_config(network_defs)
 
-    def __parse_network_adapter_config(self, network_defs):
+    def __parse_network_adapter_config(self, network_defs: List[str]) \
+            -> List[Tuple[str, Optional[str], Optional[str]]]:
         return [split_three_item_value(network) for network in network_defs]
 
-    def _parse_custom_tags(self, _configDict):
+    def _parse_custom_tags(self, _configDict: dict) -> list:
         """
         Raises:
             ConfigurationError
@@ -438,7 +440,7 @@ class Gce(ResourceAdapter): \
 
         return tags
 
-    def _parse_custom_metadata(self, _configDict):
+    def _parse_custom_metadata(self, _configDict: dict) -> dict:
         """
         Raises:
             ConfigurationError
@@ -489,7 +491,7 @@ class Gce(ResourceAdapter): \
             ),
         }
 
-    def __getStartupScript(self, configDict):
+    def __getStartupScript(self, configDict: dict) -> Optional[str]:
         """
         Build a node/instance-specific startup script that will initialize
         VPN, install Puppet, and the bootstrap the instance.
@@ -518,7 +520,7 @@ class Gce(ResourceAdapter): \
             'cfmpassword': self._cm.getCfmPassword(),
             'override_dns_domain': str(configDict['override_dns_domain']),
             'dns_options': quoted_val(configDict['dns_options'])
-                           if configDict.get('dns_options', None) else None,
+            if configDict.get('dns_options') else None,
             'dns_search': quoted_val(configDict['dns_search']),
             'dns_nameservers': _get_encoded_list(
                 configDict['dns_nameservers']),
@@ -600,7 +602,7 @@ dns_nameservers = %(dns_nameservers)s
         ]
 
     def __generate_node_name(self, session: dict, dbSession: Session,
-                             hardwareprofile: HardwareProfile):
+                             hardwareprofile: HardwareProfile) -> str:
         fqdn = self.addHostApi.generate_node_name(
             dbSession, hardwareprofile.nameFormat, randomize=True,
             dns_zone=self.private_dns_zone)
@@ -621,7 +623,7 @@ dns_nameservers = %(dns_nameservers)s
 
         return node_name
 
-    def __process_error_response(self, instance_name, result):
+    def __process_error_response(self, instance_name: str, result: dict):
         """
         Raises:
             CommandFailed
@@ -641,11 +643,11 @@ dns_nameservers = %(dns_nameservers)s
         raise CommandFailed(
             'Google Compute Engine reported error: \"%s\"' % (excmsg))
 
-    def __build_node_request_queue(self, nodes): \
+    def __build_node_request_queue(self, nodes: List[Node]) -> List[dict]: \
             # pylint: disable=no-self-use
         return [dict(node=node, status='pending') for node in nodes]
 
-    def __write_user_data(self, node, user_data_yaml):
+    def __write_user_data(self, node: Node, user_data_yaml: str) -> None:
         dstdir = get_cloud_init_path(node.name.split('.', 1)[0])
 
         if not os.path.exists(dstdir):
@@ -657,7 +659,8 @@ dns_nameservers = %(dns_nameservers)s
         with open(os.path.join(dstdir, 'user-data'), 'w') as fp:
             fp.write(user_data_yaml)
 
-    def __get_instance_metadata(self, session, pending_node):
+    def __get_instance_metadata(self, session: dict, pending_node: dict) \
+            -> List[Tuple[str, Any]]:
         node = pending_node['node']
 
         metadata = self.__get_metadata(session)
@@ -804,7 +807,7 @@ dns_nameservers = %(dns_nameservers)s
         :raises OperationFailed:
         """
 
-        common_launch_args = {}
+        common_launch_args: Dict[str, Any] = {}
 
         if 'image' in session['config']:
             if '/' in session['config']['image']:
@@ -846,7 +849,8 @@ dns_nameservers = %(dns_nameservers)s
 
         return common_launch_args
 
-    def __process_added_disk_changes(self, session, node_request):
+    def __process_added_disk_changes(self, session: dict,
+                                     node_request: dict) -> List[dict]:
         persistent_disks = []
 
         node = node_request['node']
@@ -881,14 +885,13 @@ dns_nameservers = %(dns_nameservers)s
                     'Creating data disk: (%s, %s, %s Gb)' % (
                         node.name, volName, sizeGb))
 
-                response = self.__create_persistent_disk(
-                    session, volName, sizeGb)
+                self.__create_persistent_disk(session, volName, sizeGb)
 
                 # TODO: check result
                 result = _blocking_call(
                     session['connection'].svc,
                     session['config']['project'],
-                    response,
+                    None,
                     polling_interval=session['config']['sleeptime'])
 
                 persistent_disks.append({
@@ -916,7 +919,7 @@ dns_nameservers = %(dns_nameservers)s
         if message:
             node_request['message'] = message
 
-    def __wait_for_instance(self, session, pending_node_request):
+    def __wait_for_instance(self, session: dict, pending_node_request: dict):
         try:
             if gevent_wait_for_instance(session, pending_node_request):
                 # VM launched successfully
@@ -968,7 +971,7 @@ dns_nameservers = %(dns_nameservers)s
                 message=str(exc)
             )
 
-    def wait_worker(self, session, queue):
+    def wait_worker(self, session: dict, queue: JoinableQueue) -> NoReturn:
         # greenlet to wait on queue and process VM launches
         while True:
             pending_node_request = queue.get()
@@ -978,7 +981,8 @@ dns_nameservers = %(dns_nameservers)s
             finally:
                 queue.task_done()
 
-    def __wait_for_instances(self, session, node_request_queue):
+    def __wait_for_instances(self, session: dict,
+                             node_request_queue: List[dict]) -> None:
         """
         Raises:
             CommandFailed
@@ -1038,25 +1042,10 @@ dns_nameservers = %(dns_nameservers)s
             internal_ip,
         )
 
-    def __get_instance_internal_ip(self, instance): \
+    def __get_instance_internal_ip(self, instance: dict) -> Optional[str]: \
             # pylint: disable=no-self-use
         for network_interface in instance['networkInterfaces']:
             return network_interface['networkIP']
-
-        return None
-
-    def __get_instance_external_ip(self, instance): \
-            # pylint: disable=no-self-use
-        for network_interface in instance['networkInterfaces']:
-            access_configs = network_interface.get('accessConfigs')
-            if not access_configs:
-                continue
-
-            for accessConfig in access_configs:
-                if accessConfig['kind'] == 'compute#accessConfig':
-                    if accessConfig['name'] == 'External NAT' and \
-                            accessConfig['type'] == 'ONE_TO_ONE_NAT':
-                        return accessConfig['natIP']
 
         return None
 
@@ -1116,8 +1105,8 @@ dns_nameservers = %(dns_nameservers)s
         return self.__post_launch_action(
             dbSession, session, node_request_queue)
 
-    def __post_launch_action(self, dbSession, session, node_request_queue):
-
+    def __post_launch_action(self, dbSession: Session, session: dict,
+                             node_request_queue: List[dict]):
         count = len(node_request_queue)
 
         result = []
@@ -1159,7 +1148,7 @@ dns_nameservers = %(dns_nameservers)s
 
         return result
 
-    def __get_metadata(self, session):
+    def __get_metadata(self, session: dict) -> List[Tuple[str, Any]]:
         metadata = []
 
         default_ssh_user = session['config']['default_ssh_user'] \
@@ -1186,14 +1175,14 @@ dns_nameservers = %(dns_nameservers)s
 
         return metadata
 
-    def __get_disk_type_resource_url(self, project, zone, ssd):
+    def __get_disk_type_resource_url(self, project: str, zone: str, ssd: bool):
         project_url = '%s%s' % (GCE_URL, project)
 
         disk_type = 'pd-ssd' if ssd else 'pd-standard'
 
         return '%s/zones/%s/diskTypes/%s' % (project_url, zone, disk_type)
 
-    def __create_persistent_disk(self, session, volume_name: str,
+    def __create_persistent_disk(self, session: dict, volume_name: str,
                                  size_in_Gb: int) -> None:
         self._logger.debug(
             f'Creating persistent disk [{volume_name}] (size [{size_in_Gb}])')
@@ -1209,8 +1198,10 @@ dns_nameservers = %(dns_nameservers)s
             zone=session['config']['zone']
         ).execute()
 
-    def __launch_instance(self, session, instance_name, metadata,
-                          common_launch_args, persistent_disks=None):
+    def __launch_instance(self, session: dict, instance_name: str,
+                          metadata: List[Tuple[str, Any]],
+                          common_launch_args, *,
+                          persistent_disks: List[dict]) -> dict:
         # This is the lowest level interface to Google Compute Engine
         # API to launch an instance.  It depends on 'session' (dict) to
         # contain settings, but this could easily be mocked.
@@ -1285,7 +1276,8 @@ dns_nameservers = %(dns_nameservers)s
             zone=config['zone']
         ).execute()
 
-    def __get_network_interface_definitions(self, project, region, networks):
+    def __get_network_interface_definitions(self, project: str, region: str,
+                                            networks: List[str]) -> list:
         """
         Parse network(s) from config, return list of dicts containing
         network interface spec
@@ -1325,7 +1317,9 @@ dns_nameservers = %(dns_nameservers)s
 
         return network_interfaces
 
-    def __get_network_interface(self, default_project, default_region, network):
+    def __get_network_interface(self, default_project: str,
+                                default_region: str, network: str) \
+            -> Tuple[dict, dict]:
         """
         Returns properly formed dict containing network interface
         configuration.
@@ -1393,7 +1387,7 @@ dns_nameservers = %(dns_nameservers)s
 
         return response
 
-    def __deleteInstance(self, session, node: Node):
+    def __deleteInstance(self, session: dict, node: Node) -> None:
         """
         Raises:
             CommandFailed
@@ -1444,7 +1438,7 @@ dns_nameservers = %(dns_nameservers)s
                         instance_name))
 
     def rebootNode(self, nodes: List[Node],
-                   bSoftReset: Optional[bool] = False): \
+                   bSoftReset: bool = False) -> None: \
             # pylint: disable=unused-argument
         """
         Reboot the given node
@@ -1507,7 +1501,7 @@ dns_nameservers = %(dns_nameservers)s
                         'Error rebooting Compute Engine instance [%s]' % (
                             instance_name))
 
-    def get_node_vcpus(self, name):
+    def get_node_vcpus(self, name: str) -> int:
         """
         Return number of vcpus for node. Value of 'vcpus' configured
         in resource adapter configuration takes precedence over file
@@ -1542,7 +1536,8 @@ dns_nameservers = %(dns_nameservers)s
 
         return vcpus
 
-    def __gce_get_image_by_name(self, svc, image_project, image_name):
+    def __gce_get_image_by_name(self, svc, image_project: str,
+                                image_name: str) -> str:
         """
         :raises OperationFailed: unable to find image
         """
@@ -1571,7 +1566,8 @@ dns_nameservers = %(dns_nameservers)s
 
         raise OperationFailed('Error reported by Google Compute Engine')
 
-    def __gce_get_image_family_url(self, svc, image_family_project, image_family):
+    def __gce_get_image_family_url(self, svc, image_family_project: str,
+                                   image_family: str) -> str:
         """
         :raises OperationFailed:
         """
@@ -1601,6 +1597,7 @@ dns_nameservers = %(dns_nameservers)s
                     )
 
         raise OperationFailed('Error reported by Google Compute Engine')
+
 
 class GoogleComputeEngine:
     def __init__(self, svc=None):
@@ -1663,7 +1660,7 @@ def _blocking_call(gce_service, project_id, response,
     return response
 
 
-def wait_for_instance(session, pending_node_request):
+def wait_for_instance(session: dict, pending_node_request: dict) -> bool:
     result = _blocking_call(
         session['connection'].svc,
         session['config']['project'],
