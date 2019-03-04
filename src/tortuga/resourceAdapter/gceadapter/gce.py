@@ -381,7 +381,6 @@ class Gce(ResourceAdapter): \
                     remainingNodeList: Optional[str] = None,
                     tmpBootMethod: str = 'n'): \
             # pylint: disable=unused-argument
-        """TODO: not implemented"""
         self._logger.debug(
             'startupNode(): nodes=[%s], remainingNodeList=[%s],'
             ' tmpBootMethod=[%s]',
