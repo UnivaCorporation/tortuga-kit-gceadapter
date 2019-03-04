@@ -20,7 +20,7 @@ import shlex
 import subprocess
 import time
 import urllib.parse
-from typing import Any, Callable, Dict, List, NoReturn, Optional, Tuple
+from typing import Any, Dict, List, NoReturn, Optional, Tuple
 
 import apiclient
 import gevent
@@ -783,8 +783,7 @@ dns_nameservers = %(dns_nameservers)s
 
     def __launch_instances(self, session: dict, dbSession: Session,
                            node_requests: List[dict],
-                           addNodesRequest: dict,
-                           pre_launch_callback: Callable[[str], None] = None):
+                           addNodesRequest: dict):
         """Launch Google Compute Engine instance for each node request
         """
 
@@ -820,17 +819,6 @@ dns_nameservers = %(dns_nameservers)s
                 raise
 
             # Start the Compute Engine instance here
-
-            if pre_launch_callback:
-                try:
-                    pre_launch_callback(node_request['instance_name'])
-                except Exception:
-                    self._logger.exception(
-                        'Error calling pre-launch callback for instance'
-                        ' [%s]', node_request['instance_name']
-                    )
-
-                    raise
 
             #
             # Persistent disks must be created before the instances
