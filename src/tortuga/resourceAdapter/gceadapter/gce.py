@@ -1724,7 +1724,11 @@ class GoogleComputeEngine:
         self._svc = value
 
 
-def gceAuthorize_from_json(json_filename: Optional[str] = None):
+def gceAuthorize_from_json(json_filename: Optional[str] = None) \
+        -> GoogleComputeEngine:
+    """Returns GCE session object
+    """
+
     url = 'https://www.googleapis.com/auth/compute'
 
     # Only try and load the file if it exists
