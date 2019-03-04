@@ -1736,7 +1736,7 @@ def gceAuthorize_from_json(json_filename: Optional[str] = None) \
         credentials = service_account.Credentials.from_service_account_file(
             json_filename, scopes=[url])
     else:
-        # Try and fall back to machine credentials
+        # Fallback to machine credentials
         credentials = compute_engine.Credentials()
 
     svc = googleapiclient.discovery.build(
@@ -1773,22 +1773,6 @@ def _blocking_call(gce_service, project_id, response,
                 time.sleep(polling_interval)
 
     return response
-
-
-def wait_for_instance(session: dict, pending_node_request: dict) -> bool:
-    result = _blocking_call(
-        session['connection'].svc,
-        session['config']['project'],
-        pending_node_request['response'],
-        polling_interval=session['config']['sleeptime']
-    )
-
-    pending_node_request['status'] = 'error' \
-        if 'error' in result else 'success'
-
-    pending_node_request['result'] = result
-
-    return pending_node_request['status'] == 'success'
 
 
 def _gevent_blocking_call(gce_service, project_id, response,
