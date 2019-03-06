@@ -20,7 +20,7 @@ import shlex
 import subprocess
 import time
 import urllib.parse
-from typing import Any, Callable, Dict, List, NoReturn, Optional, Tuple
+from typing import Any, Dict, List, NoReturn, Optional, Tuple
 
 import apiclient
 import gevent
@@ -43,8 +43,8 @@ from tortuga.exceptions.nodeNotFound import NodeNotFound
 from tortuga.exceptions.operationFailed import OperationFailed
 from tortuga.exceptions.unsupportedOperation import UnsupportedOperation
 from tortuga.node import state
-from tortuga.resourceAdapter.resourceAdapter import (DEFAULT_CONFIGURATION_PROFILE_NAME,
-                                                     ResourceAdapter)
+from tortuga.resourceAdapter.resourceAdapter \
+    import (DEFAULT_CONFIGURATION_PROFILE_NAME, ResourceAdapter)
 from tortuga.resourceAdapterConfiguration import settings
 from tortuga.utility.cloudinit import get_cloud_init_path
 
@@ -105,7 +105,7 @@ class Gce(ResourceAdapter): \
         'networks': settings.StringSetting(
             list=True,
             required=False,
-            description='List of networks where virtual machines will be created',
+            description='Networks associated with virtual machines',
             mutually_exclusive=['network'],
             overrides=['network'],
         ),
@@ -153,9 +153,6 @@ class Gce(ResourceAdapter): \
         'disksize': settings.IntegerSetting(
             description='Size of boot disk for virtual machine (in GB)',
             default='10'
-        ),
-        'metadata': settings.StringSetting(
-            advanced=True
         ),
         'sleeptime': settings.IntegerSetting(
             advanced=True,
@@ -287,6 +284,9 @@ class Gce(ResourceAdapter): \
 
     def __get_project_and_zone_metadata(self, node: Node) \
             -> Tuple[Optional[str], Optional[str]]:
+        """Get project and/or zone from instance metadata
+        """
+
         project = None
         zone = None
 
@@ -328,15 +328,18 @@ class Gce(ResourceAdapter): \
             self.sanApi.deleteDrive(node, removedDiskNumber)
 
     def __node_cleanup(self, node: Node) -> None:
-        self._logger.debug(
-            '__node_cleanup(): node=[%s]' % (node.name))
+        self._logger.debug('__node_cleanup(): node=[%s]', node.name)
 
         self.addHostApi.clear_session_node(node)
 
         # Update SAN API
         self.__process_deleted_disk_changes(node)
 
-    def __get_gce_session_for_node(self, node: Node):
+    def __get_gce_session_for_node(self, node: Node) -> dict:
+        """Returns GCE session object with project and/or zone properly
+        defined based on existing node metadata.
+        """
+
         gce_session = self.get_gce_session(
             node.instance.resource_adapter_configuration.name
         )
@@ -353,6 +356,13 @@ class Gce(ResourceAdapter): \
 
     def shutdownNode(self, nodes: List[Node],
                      bSoftReset: bool = False) -> None:
+        """Shutdown (stop) VMs
+
+        TODO: implement this as an async operation to ensure shutdown
+        operation succeeds. Currently, the async request is made to the GCE
+        backend and control is returned to the caller.
+        """
+
         self._logger.debug(
             'shutdownNode(): nodes=[%s], bSoftReset=%s',
             format_node_list(nodes),
@@ -387,6 +397,9 @@ class Gce(ResourceAdapter): \
                     remainingNodeList: Optional[str] = None,
                     tmpBootMethod: str = 'n'): \
             # pylint: disable=unused-argument
+        """Start stopped VMs
+        """
+
         self._logger.debug(
             'startupNode(): nodes=[%s], remainingNodeList=[%s],'
             ' tmpBootMethod=[%s]',
@@ -432,7 +445,7 @@ class Gce(ResourceAdapter): \
             if not urlResult.scheme.lower() in ['http', 'https']:
                 self._logger.error(
                     'Invalid URL specified in default_scopes:'
-                    ' \"%s\" must be a properly formatted URL' % (url))
+                    ' \"%s\" must be a properly formatted URL', url)
 
                 raise ConfigurationError(
                     'Invalid URL [%s] specified in default_scopes' % (url))
@@ -447,11 +460,6 @@ class Gce(ResourceAdapter): \
         # Parse tags
         #
         config['tags'] = self._parse_custom_tags(config)
-
-        #
-        # Parse custom metadata
-        #
-        config['metadata'] = self._parse_custom_metadata(config)
 
         #
         # DNS settings
@@ -487,8 +495,6 @@ class Gce(ResourceAdapter): \
             network_defs = ['default']
 
         # convert networks definition into list of tuples
-        self._logger.debug('Parsing network configuration')
-
         config['networks'] = self.__parse_network_adapter_config(network_defs)
 
     def __parse_network_adapter_config(self, network_defs: List[str]) \
@@ -515,42 +521,11 @@ class Gce(ResourceAdapter): \
                 errmsg = ('Tag [%s] does not match regex'
                           '\'[a-zA-Z0-9-_]{1,128}\'' % (tag))
 
-                self._logger.error('' + errmsg)
+                self._logger.error(errmsg)
 
                 raise ConfigurationError(errmsg)
 
         return tags
-
-    def _parse_custom_metadata(self, _configDict: dict) -> dict:
-        """
-        Raises:
-            ConfigurationError
-        """
-
-        metadata = {}
-
-        regex = re.compile(r'[a-zA-Z0-9-_]{1,128}')
-
-        if 'metadata' in _configDict and _configDict['metadata']:
-            # Support tag names/values containing spaces and tags without
-            # value.
-            for tagdef in shlex.split(_configDict['metadata']):
-                key, value = tagdef.split(':', 1) \
-                    if ':' in tagdef else (tagdef, '')
-
-                result = regex.match(key)
-
-                if result is None or result.group(0) != key:
-                    errmsg = ('Metadata key [%s] must match regex'
-                              ' \'[a-zA-Z0-9-_]{1,128}\'' % (key))
-
-                    self._logger.error(errmsg)
-
-                    raise ConfigurationError(errmsg)
-
-                metadata = value
-
-        return metadata
 
     def get_gce_session(
             self,
@@ -584,7 +559,7 @@ class Gce(ResourceAdapter): \
             self._logger.warning(
                 'User data script template [%s] does not'
                 ' exist. Compute Engine instances will be started without'
-                ' user data' % (configDict['startup_script_template']))
+                ' user data', configDict['startup_script_template'])
 
             return None
 
@@ -720,7 +695,7 @@ dns_nameservers = %(dns_nameservers)s
             for error in result['error']['errors'])
 
         self._logger.error(
-            'Error launching instance [%s]: ' % (instance_name) + logmsg)
+            'Error launching instance [%s]: %s', instance_name, logmsg)
 
         raise CommandFailed(
             'Google Compute Engine reported error: \"%s\"' % (excmsg))
@@ -733,8 +708,7 @@ dns_nameservers = %(dns_nameservers)s
         dstdir = get_cloud_init_path(node.name.split('.', 1)[0])
 
         if not os.path.exists(dstdir):
-            self._logger.debug(
-                'Creating cloud-init directory [%s]' % (dstdir))
+            self._logger.debug('Creating cloud-init directory [%s]', dstdir)
 
             os.makedirs(dstdir)
 
@@ -761,7 +735,7 @@ dns_nameservers = %(dns_nameservers)s
         else:
             self._logger.warning(
                 'Startup script template not defined for hardware'
-                ' profile [%s]' % (node.hardwareprofile.name))
+                ' profile [%s]', node.hardwareprofile.name)
 
         if session['config']['override_dns_domain']:
             metadata.append(('hostname', node.name))
@@ -770,8 +744,7 @@ dns_nameservers = %(dns_nameservers)s
 
     def __launch_instances(self, session: dict, dbSession: Session,
                            node_requests: List[dict],
-                           addNodesRequest: dict,
-                           pre_launch_callback: Callable[[str], None] = None):
+                           addNodesRequest: dict):
         """Launch Google Compute Engine instance for each node request
         """
 
@@ -799,23 +772,14 @@ dns_nameservers = %(dns_nameservers)s
                 metadata = self.__get_instance_metadata(session, node_request)
             except Exception:
                 self._logger.exception(
-                    'Error getting metadata for instance [%s] (%s)' % (
-                        node_request['instance_name'],
-                        node_request['node'].name))
+                    'Error getting metadata for instance [%s] (%s)',
+                    node_request['instance_name'],
+                    node_request['node'].name
+                    )
 
                 raise
 
             # Start the Compute Engine instance here
-
-            if pre_launch_callback:
-                try:
-                    pre_launch_callback(node_request['instance_name'])
-                except Exception:
-                    self._logger.exception(
-                        'Error calling pre-launch callback for instance'
-                        ' [%s]' % (node_request['instance_name']))
-
-                    raise
 
             #
             # Persistent disks must be created before the instances
@@ -846,8 +810,9 @@ dns_nameservers = %(dns_nameservers)s
 
             except Exception:
                 self._logger.error(
-                    'Error launching instance [%s]' % (
-                        node_request['instance_name']))
+                    'Error launching instance [%s]',
+                    node_request['instance_name']
+                    )
 
                 raise
 
@@ -867,14 +832,16 @@ dns_nameservers = %(dns_nameservers)s
                     )
                 )
 
+            adapter_cfg = self.load_resource_adapter_config(
+                dbSession,
+                addNodesRequest.get('resource_adapter_configuration')
+            )
+
             # Update persistent mapping of node -> instance
             node_request['node'].instance = InstanceMapping(
                 instance=node_request['instance_name'],
                 instance_metadata=instance_metadata,
-                resource_adapter_configuration=self.load_resource_adapter_config(
-                    dbSession,
-                    addNodesRequest.get('resource_adapter_configuration')
-                )
+                resource_adapter_configuration=adapter_cfg
             )
 
         # Wait for instances to launch
@@ -964,8 +931,9 @@ dns_nameservers = %(dns_nameservers)s
             if addedDiskNumber > 1:
                 # Create persistent disk
                 self._logger.debug(
-                    'Creating data disk: (%s, %s, %s Gb)' % (
-                        node.name, volName, sizeGb))
+                    'Creating data disk: (%s, %s, %s Gb)',
+                    node.name, volName, sizeGb
+                    )
 
                 self.__create_persistent_disk(session, volName, sizeGb)
 
@@ -1037,7 +1005,7 @@ dns_nameservers = %(dns_nameservers)s
 
                 errmsg = 'Google Compute Engine error: \"%s\"' % (logmsg)
 
-                self._logger.error('%s' % (errmsg))
+                self._logger.error(errmsg)
 
                 self.__mark_node_request_failed(
                     pending_node_request,
@@ -1045,8 +1013,9 @@ dns_nameservers = %(dns_nameservers)s
                 )
         except Exception as exc:  # noqa pylint: disable=broad-except
             self._logger.exception(
-                '_blocking_call() failed on instance [%s]' % (
-                    pending_node_request['instance_name']))
+                '_blocking_call() failed on instance [%s]',
+                pending_node_request['instance_name']
+            )
 
             self.__mark_node_request_failed(
                 pending_node_request,
@@ -1092,8 +1061,7 @@ dns_nameservers = %(dns_nameservers)s
         # Raise exception if any instances failed
         for node_request in node_request_queue:
             if node_request['status'] == 'error':
-                self._logger.error(
-                    'Message: {0}'.format(node_request['message']))
+                self._logger.error('Message: %s', node_request['message'])
 
                 raise CommandFailed(
                     'Fatal error launching one or more instances')
@@ -1107,12 +1075,25 @@ dns_nameservers = %(dns_nameservers)s
         instance_name = node_request['instance_name']
         node = node_request['node']
 
+        vm_inst = self.gce_get_vm(session, instance_name)
+        if vm_inst is None:
+            self._logger.error(
+                'VM [%s] went away after launching; nothing to do',
+                instance_name
+            )
+
+            return
+
         # Create nics for instance
         node.state = state.NODE_STATE_INSTALLED
 
-        internal_ip = self.__get_instance_internal_ip(
-            self.gce_get_vm(session, instance_name)
-        )
+        internal_ip = self.__get_instance_internal_ip(vm_inst)
+        if internal_ip is None:
+            self._logger.error(
+                'VM [%s] does not have an IP address (???)', vm_inst
+            )
+
+            return
 
         node.nics.append(Nic(ip=internal_ip, boot=True))
 
@@ -1178,8 +1159,6 @@ dns_nameservers = %(dns_nameservers)s
             self.__launch_instances(
                 session, dbSession, node_request_queue, addNodesRequest)
         except Exception:
-            # self._logger.exception('Error launching instances')
-
             self.__post_launch_action(dbSession, session, node_request_queue)
 
             raise
@@ -1201,12 +1180,13 @@ dns_nameservers = %(dns_nameservers)s
                 if 'instance_name' in node_request:
                     self._logger.error(
                         'Cleaning up failed instance [%s]'
-                        ' (node [%s])' % (
-                            node_request['instance_name'],
-                            node_request['node'].name))
+                        ' (node [%s])',
+                        node_request['instance_name'],
+                        node_request['node'].name
+                    )
                 else:
                     self._logger.error(
-                        'Cleaning up node [%s]' % (node_request['node']))
+                        'Cleaning up node [%s]', node_request['node'])
 
                 self.__node_cleanup(node_request['node'])
 
@@ -1226,7 +1206,7 @@ dns_nameservers = %(dns_nameservers)s
             warnmsg = ('only %d of %d requested instances launched'
                        ' successfully' % (completed, count))
 
-            self._logger.warning('%s' % (warnmsg))
+            self._logger.warning(warnmsg)
 
         return result
 
@@ -1243,8 +1223,7 @@ dns_nameservers = %(dns_nameservers)s
                 metadata.append(
                     ('sshKeys', '%s:' % (default_ssh_user) + fp.read()))
         else:
-            self._logger.info(
-                'Public SSH key (%s) not found' % (fn))
+            self._logger.info('Public SSH key (%s) not found', fn)
 
         metadata.append(('tortuga_installer_public_hostname',
                          self.installer_public_hostname))
@@ -1267,7 +1246,10 @@ dns_nameservers = %(dns_nameservers)s
     def __create_persistent_disk(self, session: dict, volume_name: str,
                                  size_in_Gb: int) -> None:
         self._logger.debug(
-            f'Creating persistent disk [{volume_name}] (size [{size_in_Gb}])')
+            'Creating persistent disk [%s] (size [%s])',
+            volume_name,
+            size_in_Gb
+        )
 
         # Create the instance
         session['connection'].svc.disks().insert(
@@ -1289,7 +1271,7 @@ dns_nameservers = %(dns_nameservers)s
         # contain settings, but this could easily be mocked.
 
         self._logger.debug(
-            '__launch_instance(): instance_name=[%s]' % (instance_name))
+            '__launch_instance(): instance_name=[%s]', instance_name)
 
         connection = session['connection']
 
@@ -1453,15 +1435,17 @@ dns_nameservers = %(dns_nameservers)s
 
                     self._logger.error(
                         'Unable to get Compute Engine instance %s'
-                        ' (code: %s, message: %s)' % (
-                            instance_name,
-                            error_resp['error']['code'],
-                            error_resp['error']['message']))
+                        ' (code: %s, message: %s)',
+                        instance_name,
+                        error_resp['error']['code'],
+                        error_resp['error']['message']
+                    )
                 except ValueError:
                     # Malformed JSON in response
                     self._logger.error(
                         'Unable to get Compute Engine instance %s'
-                        ' (JSON parsing error)' % (instance_name))
+                        ' (JSON parsing error)', instance_name
+                    )
 
             # If an exception was raised while attempting to get the instance,
             # return None to inform the caller that it is not available.
@@ -1478,8 +1462,9 @@ dns_nameservers = %(dns_nameservers)s
         instance_name = get_instance_name_from_host_name(node.name)
 
         self._logger.debug(
-            '__deleteInstance(): instance_name=[%s]' % (
-                instance_name))
+            '__deleteInstance(): instance_name=[%s]',
+            instance_name
+        )
 
         project, zone = self.__get_project_and_zone_metadata(node)
 
@@ -1497,8 +1482,9 @@ dns_nameservers = %(dns_nameservers)s
                 ).execute()
 
             self._logger.debug(
-                '__deleteInstance(): initial_response=[%s]' % (
-                    initial_response))
+                '__deleteInstance(): initial_response=[%s]',
+                initial_response
+            )
 
             # Wait for instance to be deleted
             # _blocking_call(
@@ -1508,12 +1494,11 @@ dns_nameservers = %(dns_nameservers)s
         except apiclient.errors.HttpError as ex:
             if ex.resp['status'] == '404':
                 # Specified instance not found; nothing we can do there...
-                self._logger.warning(
-                    'Instance [%s] not found' % (instance_name))
+                self._logger.warning('Instance [%s] not found', instance_name)
             else:
                 self._logger.debug(
                     '__deleteInstance(): ex.resp=[%s],'
-                    ' ex.content=[%s]' % (ex.resp, ex.content))
+                    ' ex.content=[%s]', ex.resp, ex.content)
 
                 raise CommandFailed(
                     'Error deleting Compute Engine instance [%s]' % (
@@ -1522,13 +1507,13 @@ dns_nameservers = %(dns_nameservers)s
     def rebootNode(self, nodes: List[Node],
                    bSoftReset: bool = False) -> None: \
             # pylint: disable=unused-argument
-        """
-        Reboot the given node
+        """Reboot the given node
+
+        TODO: this should be an async task
         """
 
         for node in nodes:
-            self._logger.debug(
-                'rebootNode(): node=[%s]' % (node.name))
+            self._logger.debug('rebootNode(): node=[%s]', node.name)
 
             gce_session = self.get_gce_session(
                 node.instance.resource_adapter_configuration.name
@@ -1555,8 +1540,9 @@ dns_nameservers = %(dns_nameservers)s
                     ).execute()
 
                 self._logger.debug(
-                    'rebootNode(): initial_response=[%s]' % (
-                        initial_response))
+                    'rebootNode(): initial_response=[%s]',
+                    initial_response
+                )
 
                 # Wait for instance to be rebooted
                 _blocking_call(
@@ -1566,18 +1552,17 @@ dns_nameservers = %(dns_nameservers)s
                     polling_interval=gce_session['config']['sleeptime']
                 )
 
-                self._logger.debug(
-                    f'Instance [{node.name}] rebooted')
+                self._logger.debug(f'Instance [%s] rebooted', node.name)
             except apiclient.errors.HttpError as ex:
                 if ex.resp['status'] == '404':
                     # Specified instance not found; nothing we can do
                     # there...
                     self._logger.warning(
-                        'Instance [%s] not found' % (instance_name))
+                        'Instance [%s] not found', instance_name)
                 else:
                     self._logger.debug(
                         'rebootNode(): ex.resp=[%s],'
-                        ' ex.content=[%s]' % (ex.resp, ex.content))
+                        ' ex.content=[%s]', ex.resp, ex.content)
 
                     raise CommandFailed(
                         'Error rebooting Compute Engine instance [%s]' % (
@@ -1695,7 +1680,11 @@ class GoogleComputeEngine:
         self._svc = value
 
 
-def gceAuthorize_from_json(json_filename: Optional[str] = None):
+def gceAuthorize_from_json(json_filename: Optional[str] = None) \
+        -> GoogleComputeEngine:
+    """Returns GCE session object
+    """
+
     url = 'https://www.googleapis.com/auth/compute'
 
     # Only try and load the file if it exists
@@ -1703,7 +1692,7 @@ def gceAuthorize_from_json(json_filename: Optional[str] = None):
         credentials = service_account.Credentials.from_service_account_file(
             json_filename, scopes=[url])
     else:
-        # Try and fall back to machine credentials
+        # Fallback to machine credentials
         credentials = compute_engine.Credentials()
 
     svc = googleapiclient.discovery.build(
@@ -1740,22 +1729,6 @@ def _blocking_call(gce_service, project_id, response,
                 time.sleep(polling_interval)
 
     return response
-
-
-def wait_for_instance(session: dict, pending_node_request: dict) -> bool:
-    result = _blocking_call(
-        session['connection'].svc,
-        session['config']['project'],
-        pending_node_request['response'],
-        polling_interval=session['config']['sleeptime']
-    )
-
-    pending_node_request['status'] = 'error' \
-        if 'error' in result else 'success'
-
-    pending_node_request['result'] = result
-
-    return pending_node_request['status'] == 'success'
 
 
 def _gevent_blocking_call(gce_service, project_id, response,
