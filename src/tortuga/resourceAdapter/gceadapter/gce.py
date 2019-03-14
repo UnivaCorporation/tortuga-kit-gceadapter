@@ -1231,9 +1231,6 @@ dns_nameservers = %(dns_nameservers)s
         metadata.append(('tortuga_installer_public_ipaddress',
                          self.installer_public_ipaddress))
 
-        for key, value in session['config']['metadata'].items():
-            metadata.append((key, value))
-
         return metadata
 
     def __get_disk_type_resource_url(self, project: str, zone: str, ssd: bool):
