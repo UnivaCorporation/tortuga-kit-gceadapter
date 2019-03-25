@@ -12,36 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os
-import subprocess
-
 from setuptools import find_packages, setup
 
 
-version = '7.0.3'
-
-
-def get_git_revision():
-    cmd = 'git rev-parse --short HEAD'
-
-    p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)
-    result, _ = p.communicate()
-    p.wait()
-
-    return result.decode().rstrip()
-
-
-git_revision = get_git_revision()
-
-module_version = f'{version}+rev{git_revision}'
-
-if os.getenv('CI_PIPELINE_ID'):
-    module_version += '.{}'.format(os.getenv('CI_PIPELINE_ID'))
+VERSION = '7.0.3'
 
 
 setup(
     name='tortuga-gce-adapter',
-    version=module_version,
+    version=VERSION,
     url='http://univa.com',
     author='Univa Corporation',
     author_email='support@univa.com',
