@@ -13,25 +13,27 @@
 # limitations under the License.
 
 class tortuga_kit_gceadapter::gpu {
-  package { ['kernel-devel','kernel-headers','epel-release']:
-    ensure => 'installed',
+  package { ['kernel-devel', 'kernel-headers', 'epel-release']:
+    ensure   => 'installed',
     provider => 'yum',
   }
 
   package { "cuda-repo-rhel7":
     provider => 'rpm',
-    source => 'http://developer.download.nvidia.com/compute/cuda/repos/rhel7/x86_64/cuda-repo-rhel7-10.0.130-1.x86_64.rpm',
-    ensure => 'installed',
+    source   =>
+      'http://developer.download.nvidia.com/compute/cuda/repos/rhel7/x86_64/cuda-repo-rhel7-10.0.130-1.x86_64.rpm'
+    ,
+    ensure   => 'installed',
   }
 
-  package { ['cuda-10-0',]:
+  package { ['cuda-10-0', ]:
     provider => 'yum',
-    ensure => 'installed',
-  #require => 'tortuga_kit_uge::execd'
+    ensure   => 'installed',
+    #require => 'tortuga_kit_uge::execd'
   }
 
   exec { "/bin/nvidia-smi -pm 1":
     subscribe => Package['cuda-10-0'],
- }
+  }
 
 }
