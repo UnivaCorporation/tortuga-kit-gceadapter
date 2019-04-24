@@ -115,6 +115,7 @@ covered in this document.
 | vcpus                   | Number of virtual CPUs for specified virtual machine type. This setting overrides the lookup capability described below. |
 | disksize                | (*optional*) Size of boot disk for virtual machine (in GB). Alternatively, use the disk settings from the software profile. See below for more details. |
 | ssd                     | Set to "true" to enable SSD-backed virtual machines, set to "false" to use standard persistent disk. SSD-backed volumes are *enabled* by default. |
+| accelerators            | List of GPU accelerators to include in the instance, in the following format: `<accelerator-type>:<accelerator-count>,...`. The `gpu` component needs to be enabled on the software profile for installation of the GPU drivers (currently only CentOS/RHEL 7 supported). |
 
 <sup>*</sup> Use the following `gcloud` command-line to determine the value for
 `image_url` for CentOS 7:
@@ -523,3 +524,23 @@ mechanism must be preserved for custom, non-Google provided images.
 \newpage
 
 [Google Compute Engine]: https://cloud.google.com/compute           "Google Compute Engine"
+
+
+### GPU Support
+
+To enable GPU support, the `accelerators` setting needs to be configured
+on the resource adapter profile. For example, to enable a single GPU of
+type `ACCELERATOR_TYPE` on the default resource adapter profile:
+
+```shell
+adapter-mgmt update -r gce -p Default --setting accelerators="ACCELERATOR_TYPE:1"
+```
+
+Additionally, to ensure that the GPU drivers are installed when the
+VM is started, the `gpu` component needs to be enabled on the software
+profile. For example, to enable the `gpu` component on the `PROFILE`
+software profile:
+
+```shell
+enable-component --software-profile PROFILE gpu
+```
