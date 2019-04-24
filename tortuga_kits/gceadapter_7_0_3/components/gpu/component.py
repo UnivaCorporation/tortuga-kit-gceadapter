@@ -12,13 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from tortuga.kit.mixins.resource_adapter import \
-    ResourceAdapterManagementComponentInstaller
+from tortuga.kit.installer import ComponentInstallerBase
 
 
-class ComponentInstaller(ResourceAdapterManagementComponentInstaller):
+class ComponentInstaller(ComponentInstallerBase):
     name = 'gpu'
     version = '7.0.3'
+    installer_only = False
     os_list = [
         {'family': 'rhel', 'version': '7', 'arch': 'x86_64'},
     ]

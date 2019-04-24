@@ -13,7 +13,7 @@
 # limitations under the License.
 
 class tortuga_kit_gceadapter::gpu {
-  if $facts['os']['name'] == 'Redhat' {
+  if $facts['os']['family'] == 'Redhat' {
 
     package { ['kernel-devel', 'kernel-headers', 'epel-release']:
       ensure   => 'installed',
