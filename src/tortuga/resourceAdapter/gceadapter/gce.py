@@ -171,7 +171,6 @@ class Gce(ResourceAdapter): \
         ),
         'override_dns_domain': settings.BooleanSetting(default='False'),
         'dns_domain': settings.StringSetting(requires='override_dns_domain'),
-        'dns_search': settings.StringSetting(),
         'dns_options': settings.StringSetting(),
         'dns_nameservers': settings.StringSetting(
             default='',
@@ -471,9 +470,6 @@ class Gce(ResourceAdapter): \
         config['dns_domain'] = config['dns_domain'] \
             if 'dns_domain' in config else self.private_dns_zone
 
-        config['dns_search'] = config['dns_search'] \
-            if 'dns_search' in config else self.private_dns_zone
-
         if not config['dns_nameservers']:
             config['dns_nameservers'].append(self.installer_public_ipaddress)
 
@@ -579,9 +575,9 @@ class Gce(ResourceAdapter): \
             'cfmuser': self._cm.getCfmUser(),
             'cfmpassword': self._cm.getCfmPassword(),
             'override_dns_domain': str(configDict['override_dns_domain']),
+            'dns_domain': str(configDict['dns_domain']),
             'dns_options': quoted_val(configDict['dns_options'])
             if configDict.get('dns_options') else None,
-            'dns_search': quoted_val(configDict['dns_search']),
             'dns_nameservers': _get_encoded_list(
                 configDict['dns_nameservers']),
         }
@@ -601,7 +597,7 @@ cfmPassword = '%(cfmpassword)s'
 # DNS settings
 override_dns_domain = %(override_dns_domain)s
 dns_options = %(dns_options)s
-dns_search = %(dns_search)s
+dns_search = %(dns_domain)s
 dns_nameservers = %(dns_nameservers)s
 ''' % (config)
                 else:
