@@ -56,8 +56,6 @@ def test_default_config(private_dns_zone_mock):
 
     assert config['dns_domain'] == 'example.com'
 
-    assert config['dns_search'] == config['dns_domain']
-
 
 @mock.patch('tortuga.resourceAdapter.gceadapter.gce.Gce.private_dns_zone',
             new_callable=mock.PropertyMock)
