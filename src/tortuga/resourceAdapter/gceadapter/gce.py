@@ -575,7 +575,7 @@ class Gce(ResourceAdapter): \
             'cfmuser': self._cm.getCfmUser(),
             'cfmpassword': self._cm.getCfmPassword(),
             'override_dns_domain': str(configDict['override_dns_domain']),
-            'dns_domain': str(configDict['dns_domain']),
+            'dns_domain': quoted_val(configDict['dns_domain']),
             'dns_options': quoted_val(configDict['dns_options'])
             if configDict.get('dns_options') else None,
             'dns_nameservers': _get_encoded_list(
