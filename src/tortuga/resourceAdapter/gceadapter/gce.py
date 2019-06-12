@@ -15,8 +15,6 @@
 import json
 import os.path
 import random
-import re
-import shlex
 import subprocess
 import time
 import urllib.parse
@@ -82,6 +80,7 @@ class Gce(ResourceAdapter): \
     DEFAULT_SLEEP_TIME = 5
 
     settings = {
+        **ResourceAdapter.settings,
         'zone': settings.StringSetting(
             required=True,
             description='Zone in which compute resources are created'
@@ -142,9 +141,6 @@ class Gce(ResourceAdapter): \
             required=True,
             description='Username of default user on created VMs. "centos" '
                         'is an appropriate value for CentOS-based VMs.'
-        ),
-        'tags': settings.StringSetting(
-            description='Keywords (separated by spaces)'
         ),
         'vcpus': settings.IntegerSetting(
             description='Number of virtual CPUs for specified virtual '
@@ -217,6 +213,10 @@ class Gce(ResourceAdapter): \
 
         gce_session = self.get_gce_session(
             addNodesRequest.get('resource_adapter_configuration'))
+
+        gce_session['tags'] = self.get_tags(gce_session['config'],
+                                            dbHardwareProfile,
+                                            dbSoftwareProfile)
 
         # Add regular instance-backed (active) nodes
         nodes = self.__addActiveNodes(
@@ -460,11 +460,6 @@ class Gce(ResourceAdapter): \
         self.__validate_default_scopes(config['default_scopes'])
 
         #
-        # Parse tags
-        #
-        config['tags'] = self._parse_custom_tags(config)
-
-        #
         # DNS settings
         #
         config['dns_domain'] = config['dns_domain'] \
@@ -501,50 +496,22 @@ class Gce(ResourceAdapter): \
             -> List[Tuple[str, Optional[str], Optional[str]]]:
         return [split_three_item_value(network) for network in network_defs]
 
-    def _parse_custom_tags(self, _configDict: dict) -> list:
+    def get_gce_session(self,
+                        profile: str = DEFAULT_CONFIGURATION_PROFILE_NAME
+                        ) -> dict:
         """
-        Raises:
-            ConfigurationError
-        """
-
-        # Create common regex for validating tags and custom metadata keys
-        regex = re.compile(r'[a-zA-Z0-9-_]{1,128}')
-
-        # Parse custom tags
-        tags = shlex.split(_configDict['tags']) \
-            if 'tags' in _configDict and _configDict['tags'] else []
-
-        # Validate custom tags
-        for tag in tags:
-            result = regex.match(tag)
-            if result is None or result.group(0) != tag:
-                errmsg = ('Tag [%s] does not match regex'
-                          '\'[a-zA-Z0-9-_]{1,128}\'' % (tag))
-
-                self._logger.error(errmsg)
-
-                raise ConfigurationError(errmsg)
-
-        return tags
-
-    def get_gce_session(
-            self,
-            section_name: Optional[str]) -> dict:
-        """Initialize GCE session
+        Initialize GCE session
 
         :raises ConfigurationError:
         :raises ResourceNotFound:
-        """
 
-        adapter_cfg = self.getResourceAdapterConfig(
-            section_name or DEFAULT_CONFIGURATION_PROFILE_NAME
-        )
+        """
+        config = self.get_config(profile)
 
         return {
-            'config': adapter_cfg,
-            'connection': gceAuthorize_from_json(
-                adapter_cfg.get('json_keyfile')
-            ),
+            'config': config,
+            'tags': {},
+            'connection': gceAuthorize_from_json(config.get('json_keyfile')),
         }
 
     def __getStartupScript(self, configDict: dict) -> Optional[str]:
@@ -1286,16 +1253,13 @@ dns_nameservers = %(dns_nameservers)s
 
         instance = {
             'name': instance_name,
-            'tags': {
-                'items': ['tortuga'] + config['tags'],
-            },
             'machineType': machine_type_url,
+            'labels': _tags_to_kv_items(session['tags']),
             'disks': [
                 {
                     'type': 'PERSISTENT',
                     'boot': 'true',
                     'mode': 'READ_WRITE',
-                    # 'deviceName': instance_name,
                     'autoDelete': True,
                     'initializeParams': {
                         'sourceImage': common_launch_args['image_url'],
@@ -1932,3 +1896,24 @@ def _parse_accelerator(accelerator_string: str) -> List[dict]:
         accelerator, count = parts
         accel.append({"acceleratorType":accelerator, "acceleratorCount": int(count)})
     return accel
+
+def _tags_to_kv_items(tags: Dict[str, str]) -> List[Dict[str, str]]:
+    """
+    Takes a dict of tags and turns them into a list of key/value
+    pairs suitable for storing as labels, metadata, or tags.
+
+    :param Dict[str, str] tags: the tags to convert
+
+    :return List[Dict[str, str]]: a list of tag key/value paris suitable for
+                                  usage as key/value items
+
+    """
+    metadata_items = []
+
+    for k, v in tags.items():
+        metadata_items.append({
+            "key": k,
+            "value": v
+        })
+
+    return metadata_items

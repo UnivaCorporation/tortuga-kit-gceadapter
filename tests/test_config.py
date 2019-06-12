@@ -49,8 +49,7 @@ def test_default_config(private_dns_zone_mock):
     private_dns_zone_mock.return_value = 'example.com'
 
     adapter = Gce()
-
-    config = adapter.getResourceAdapterConfig()
+    config = adapter.get_config()
 
     assert not config['override_dns_domain']
 
@@ -62,7 +61,7 @@ def test_default_config(private_dns_zone_mock):
 @mock.patch.object(Gce, '_load_config_from_database', return_value={})
 def test_invalid_empty_config(load_config_dict_mock, private_dns_zone_mock):
     with pytest.raises(ConfigurationError):
-        Gce().getResourceAdapterConfig()
+        Gce().get_config()
 
 
 @mock.patch('tortuga.resourceAdapter.gceadapter.gce.Gce.private_dns_zone',
@@ -78,7 +77,7 @@ def test_multiple_networks_config(private_dns_zone_mock):
             Gce, '_load_config_from_database', return_value=config):
         adapter = Gce()
 
-        result = adapter.getResourceAdapterConfig()
+        result = adapter.get_config()
 
         assert 'networks' in result
 
@@ -117,7 +116,7 @@ def test_multiple_networks_config_advanced(private_dns_zone_mock):
             Gce, '_load_config_from_database', return_value=config):
         adapter = Gce()
 
-        result = adapter.getResourceAdapterConfig()
+        result = adapter.get_config()
 
         assert 'networks' in result
 

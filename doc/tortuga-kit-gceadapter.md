@@ -111,7 +111,7 @@ covered in this document.
 | image_url               | URL of Google Compute Engine image to be used when creating compute nodes. This URL can be obtained from the Google Compute Engine console or through the `gcloud` command-line interface <sup>\*</sup>  Only one of `image`, `image_url`, or `image_family` is required. |
 | image_family            | `<project>/<family name>`. For example, to use the latest CentOS 7image, this value would be `centos-cloud/centos-7`.  Only one of `image`, `image_url`, or `image_family` is required. |
 | default_ssh_user        | Username of default user on created VMs. 'centos' is an appropriate value for CentOS-based VMs. |
-| tags                    | Keywords (separated by spaces) automatically added to all VMs launched by Tortuga. |
+| tags                    | Key/value pairs separated by commas in the form of `key1=value1,key2=value2...` which are automatically added to all VMs as labels. |
 | vcpus                   | Number of virtual CPUs for specified virtual machine type. This setting overrides the lookup capability described below. |
 | disksize                | (*optional*) Size of boot disk for virtual machine (in GB). Alternatively, use the disk settings from the software profile. See below for more details. |
 | ssd                     | Set to "true" to enable SSD-backed virtual machines, set to "false" to use standard persistent disk. SSD-backed volumes are *enabled* by default. |
