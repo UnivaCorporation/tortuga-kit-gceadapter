@@ -209,7 +209,11 @@ class Gce(ResourceAdapter): \
         :raises: HardwareProfileNotFound
         :raises: SoftwareProfileNotFound
         :raises: InvalidArgument
+        
         """
+
+        result = super().start(addNodesRequest, dbSession, dbHardwareProfile,
+                               dbSoftwareProfile)
 
         gce_session = self.get_gce_session(
             addNodesRequest.get('resource_adapter_configuration'))
@@ -231,7 +235,9 @@ class Gce(ResourceAdapter): \
         # a proper context manager implemented.
         self.addHostApi.clear_session_nodes(nodes)
 
-        return nodes
+        result.extend(nodes)
+
+        return result
 
     def validate_start_arguments(self, addNodesRequest: dict,
                                  dbHardwareProfile: HardwareProfile,
