@@ -1260,7 +1260,7 @@ dns_nameservers = %(dns_nameservers)s
         instance = {
             'name': instance_name,
             'machineType': machine_type_url,
-            'labels': _tags_to_kv_items(session['tags']),
+            'labels': session['tags'],
             'disks': [
                 {
                     'type': 'PERSISTENT',
@@ -1893,6 +1893,7 @@ def format_node_list(nodes: List[Node]) -> str:
 
     return ' '.join([node.name for node in nodes])
 
+
 def _parse_accelerator(accelerator_string: str) -> List[dict]:
     accel = []
     for s in accelerator_string.split(","):
@@ -1902,24 +1903,3 @@ def _parse_accelerator(accelerator_string: str) -> List[dict]:
         accelerator, count = parts
         accel.append({"acceleratorType":accelerator, "acceleratorCount": int(count)})
     return accel
-
-def _tags_to_kv_items(tags: Dict[str, str]) -> List[Dict[str, str]]:
-    """
-    Takes a dict of tags and turns them into a list of key/value
-    pairs suitable for storing as labels, metadata, or tags.
-
-    :param Dict[str, str] tags: the tags to convert
-
-    :return List[Dict[str, str]]: a list of tag key/value paris suitable for
-                                  usage as key/value items
-
-    """
-    metadata_items = []
-
-    for k, v in tags.items():
-        metadata_items.append({
-            "key": k,
-            "value": v
-        })
-
-    return metadata_items
