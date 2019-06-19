@@ -80,14 +80,18 @@ class Gce(ResourceAdapter): \
     DEFAULT_SLEEP_TIME = 5
 
     settings = {
-        **ResourceAdapter.settings,
+        'tags': settings.TagListSetting(
+            display_name='Tags',
+            description='A comma-separated list of tags in the form of '
+                        'key=value'
+        ),
         'zone': settings.StringSetting(
             required=True,
             description='Zone in which compute resources are created'
         ),
         'json_keyfile': settings.FileSetting(
-            description='Filename/path of service account credentials file as '
-                        'provided by Google Compute Platform',
+            description='Filename/path of service account credentials file'
+                        'as provided by Google Compute Platform',
             base_path='/opt/tortuga/config/'
         ),
         'type': settings.StringSetting(
