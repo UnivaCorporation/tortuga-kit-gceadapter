@@ -692,9 +692,11 @@ dns_nameservers = %(dns_nameservers)s
         with open(os.path.join(dstdir, 'user-data'), 'w') as fp:
             fp.write(user_data_yaml)
 
-    def __get_instance_metadata(self, session: dict, pending_node: dict) \
+    def __get_instance_metadata(self, session: dict, pending_node: Optional[dict] = None) \
             -> List[Tuple[str, Any]]:
-        node = pending_node['node']
+        node = None
+        if pending_node is not None:
+            node = pending_node['node']
 
         metadata = self.__get_metadata(session)
 
@@ -710,11 +712,12 @@ dns_nameservers = %(dns_nameservers)s
             # with open(tmpfn, 'w') as fp:
             #     fp.write(startup_script + '\n')
         else:
-            self._logger.warning(
-                'Startup script template not defined for hardware'
-                ' profile [%s]', node.hardwareprofile.name)
+            if node is not None:
+                self._logger.warning(
+                    'Startup script template not defined for hardware'
+                    ' profile [%s]', node.hardwareprofile.name)
 
-        if session['config']['override_dns_domain']:
+        if node is not None and session['config']['override_dns_domain']:
             metadata.append(('hostname', node.name))
 
         return metadata
@@ -1240,18 +1243,16 @@ dns_nameservers = %(dns_nameservers)s
             zone=session['config']['zone']
         ).execute()
 
-    def __launch_instance(self, session: dict, instance_name: str,
+    def __get_instance_properties(self, session: dict,
                           metadata: List[Tuple[str, Any]],
                           common_launch_args, *,
                           persistent_disks: List[dict]) -> dict:
-        # This is the lowest level interface to Google Compute Engine
-        # API to launch an instance.  It depends on 'session' (dict) to
+        # Get common instance launch parameters.  Used when creating an
+        # instance or instance template.  It depends on 'session' (dict) to
         # contain settings, but this could easily be mocked.
 
         self._logger.debug(
-            '__launch_instance(): instance_name=[%s]', instance_name)
-
-        connection = session['connection']
+            '__get_instance_properties()')
 
         config = session['config']
 
@@ -1262,7 +1263,8 @@ dns_nameservers = %(dns_nameservers)s
             project_url, config['zone'], config['type'])
 
         instance = {
-            'name': instance_name,
+            # Name is filled in by the caller.
+            # 'name': instance_name,
             'machineType': machine_type_url,
             'labels': session['tags'],
             'disks': [
@@ -1321,7 +1323,198 @@ dns_nameservers = %(dns_nameservers)s
             'items': [dict(key=key, value=value) for key, value in metadata],
         }
 
-        # Create the instance
+        return instance
+
+    def delete_scale_set(self,
+              name: str,
+              resourceAdapterProfile: str):
+
+        """
+        Delete an existing scale set
+
+        :raises InvalidArgument:
+        """
+        session = self.get_gce_session(
+            resourceAdapterProfile
+        )
+
+        connection = session['connection']
+
+        config = session['config']
+
+        normalized_name = "scale-set-" + name
+
+        try:
+            initial_response = connection.svc.instanceGroupManagers().delete(
+                project=config['project'],
+                zone=config['zone'],
+                instanceGroupManager=normalized_name
+            ).execute()
+            # Wait for this to exist before continuing
+            result = _blocking_call(
+                    session['connection'].svc,
+                    session['config']['project'],
+                    initial_response,
+                    polling_interval=session['config']['sleeptime'])    
+        except Exception as ex:
+            if not ex.message.startswith("AutoScalingGroup name not found"):
+                raise
+        finally:
+            try:
+                connection.svc.instanceTemplates().delete(
+                    project=config['project'],
+                    instanceTemplate=normalized_name
+                ).execute()
+            except Exception as ex:
+                if not ex.message.startswith("Launch configuration name not found"):
+                    raise
+
+    def update_scale_set(self,
+              name: str,
+              resourceAdapterProfile: str,
+              hardwareProfile: str,
+              softwareProfile: str,
+              minCount: int,
+              maxCount: int,
+              desiredCount: int):
+
+        """
+        Updates an existing scale set
+
+        :raises InvalidArgument:
+        """
+        session = self.get_gce_session(
+            resourceAdapterProfile
+        )
+
+        connection = session['connection']
+
+        config = session['config']
+
+        normalized_name = "scale-set-" + name
+        connection.svc.instanceGroupManagers().resize(
+            project=config['project'],
+            zone=config['zone'],
+            instanceGroupManager=normalized_name,
+            size=desiredCount).execute()
+
+    def create_scale_set(self,
+              name: str,
+              resourceAdapterProfile: str,
+              hardwareProfile: str,
+              softwareProfile: str,
+              minCount: int,
+              maxCount: int,
+              desiredCount: int):
+
+        """
+        Create a scale set in GCE
+
+        :raises InvalidArgument:
+        """
+
+        self._logger.debug(
+            'create_scale_set(): name=[%s]', name)
+
+        session = self.get_gce_session(
+            resourceAdapterProfile
+        )
+
+        connection = session['connection']
+
+        config = session['config']
+
+        try:
+            metadata = self.__get_instance_metadata(session)
+        except Exception:
+            self._logger.exception(
+                'Error getting metadata'
+                )
+            raise
+
+        common_launch_args = self.__get_common_launch_args(
+            session
+        )
+
+        # Just support root disks in scale mode
+        persistent_disks =  [{
+                    'sizeGb': session['config']['disksize'],
+        }]
+
+        instance = self. __get_instance_properties(session,
+                          metadata,
+                          common_launch_args,
+                          persistent_disks=persistent_disks)
+
+        # Override a few fields to meet instanceTemplates API
+        instance["machineType"] = config['type']
+        for disk in instance["disks"]:
+            disk["initializeParams"]["diskType"] = \
+                os.path.basename(disk["initializeParams"]["diskType"])    
+
+        normalized_name = "scale-set-" + name
+
+        instanceTemplate = {
+            "name": normalized_name,
+            "properties" : instance,
+        }
+
+        instanceGroup = {
+            "baseInstanceName": softwareProfile.lower().replace("_","-"),
+            "instanceTemplate": "global/instanceTemplates/" + normalized_name,
+            "versions": [
+                { "instanceTemplate": "global/instanceTemplates/" + normalized_name }
+            ],
+            "name": normalized_name,
+            "targetSize": desiredCount
+        }
+
+        try:
+            initial_response = connection.svc.instanceTemplates().insert(
+                project=config['project'],
+                body=instanceTemplate
+            ).execute()
+            result = _blocking_call(
+                    session['connection'].svc,
+                    session['config']['project'],
+                    initial_response,
+                    polling_interval=session['config']['sleeptime'])
+            connection.svc.instanceGroupManagers().insert(
+                project=config['project'],
+                body=instanceGroup,
+                zone=config['zone']
+            ).execute()
+        except Exception as ex:
+            connection.svc.instanceTemplates().delete(
+                project=config['project'],
+                instanceTemplate=normalized_name
+            ).execute()
+            raise ex
+
+    def __launch_instance(self, session: dict, instance_name: str,
+                          metadata: List[Tuple[str, Any]],
+                          common_launch_args, *,
+                          persistent_disks: List[dict]) -> dict:
+        # This is the lowest level interface to Google Compute Engine
+        # API to launch an instance.  It depends on 'session' (dict) to
+        # contain settings, but this could easily be mocked.
+
+        self._logger.debug(
+            '__launch_instance(): instance_name=[%s]', instance_name)
+
+        connection = session['connection']
+
+        config = session['config']
+
+        instance = self. __get_instance_properties(session,
+                          metadata,
+                          common_launch_args,
+                          persistent_disks=persistent_disks)
+
+        # Need to set the instance name as the proprties helper
+        # does not do that
+        instance["name"] = instance_name
+
         return connection.svc.instances().insert(
             project=config['project'],
             body=instance,

@@ -41,10 +41,10 @@ class GceScaleSetListenerMixin:
         self._store: ResourceRequestStore = ResourceRequestStoreManager.get()
         Session = sessionmaker(bind=dbm.engine)
         self.session = Session()
-        self.__adapter_name = 'gce'
+        self._adapter_name = 'gce'
 
     def get_resource_adapter(self) -> ResourceAdapter:
-        adapter = get_api(self.__adapter_name)
+        adapter = get_api(self._adapter_name)
         adapter.session = self.session
         return adapter
 
@@ -57,7 +57,7 @@ class GceScaleSetListenerMixin:
         #
         # Only requests destined for GCE are valid for these listeners
         #
-        if resource_request.resourceadapter_name != self.__adapter_name:
+        if resource_request.resourceadapter_name != self._adapter_name:
             return False
         #
         # If we get this far, then the request is valid
@@ -115,7 +115,7 @@ class GceScaleSetCreatedListener(GceScaleSetListenerMixin, BaseListener):
         if ssr is None:
             return
 
-        logger.warning('Scale set create request for %s: %s', self.__adapter_name, ssr.id)
+        logger.warning('Scale set create request for %s: %s', self._adapter_name, ssr.id)
 
         # Load the resource adapter for this request
         try:
@@ -136,6 +136,7 @@ class GceScaleSetCreatedListener(GceScaleSetListenerMixin, BaseListener):
         except Exception as ex:
             logger.error("Error creating resource request: %s", ex)
             self._store.delete(ssr.id)
+            raise
         
 
 
@@ -151,7 +152,7 @@ class GceScaleSetUpdatedListener(GceScaleSetListenerMixin, BaseListener):
         if ssr is None:
             return
 
-        logger.warning('Scale set update request for %s: %s', self.__adapter_name, ssr.id)
+        logger.warning('Scale set update request for %s: %s', self._adapter_name, ssr.id)
 
         # Load the resource adapter for this request
         try:
@@ -188,7 +189,7 @@ class GceScaleSetDeletedListener(GceScaleSetListenerMixin, BaseListener):
         if ssr is None:
             return
 
-        logger.warning('Scale set delete request for %s: %s' % self.__adapter_name, ssr.id)
+        logger.warning('Scale set delete request for %s: %s', self._adapter_name, ssr.id)
 
         # Load the resource adapter for this request
         try:
