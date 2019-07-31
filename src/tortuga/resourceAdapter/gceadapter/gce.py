@@ -47,6 +47,8 @@ from tortuga.resourceAdapter.resourceAdapter \
     import (DEFAULT_CONFIGURATION_PROFILE_NAME, ResourceAdapter)
 from tortuga.resourceAdapterConfiguration import settings
 from tortuga.utility.cloudinit import get_cloud_init_path
+from tortuga.exceptions.invalidArgument import InvalidArgument
+
 
 
 API_VERSION = 'v1'
