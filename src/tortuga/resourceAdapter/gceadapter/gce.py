@@ -1595,7 +1595,7 @@ insertnode_request = %s
                     'sizeGb': session['config']['disksize'],
         }]
 
-        instance = self. __get_instance_properties(session,
+        instance = self.__get_instance_properties(session,
                           metadata,
                           common_launch_args,
                           persistent_disks=persistent_disks)
@@ -1660,7 +1660,7 @@ insertnode_request = %s
 
         config = session['config']
 
-        instance = self. __get_instance_properties(session,
+        instance = self.__get_instance_properties(session,
                           metadata,
                           common_launch_args,
                           persistent_disks=persistent_disks)
