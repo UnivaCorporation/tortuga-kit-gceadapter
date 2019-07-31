@@ -722,6 +722,11 @@ dns_nameservers = %(dns_nameservers)s
 # Insert_node
 insertnode_request = %s
 ''' % (insertnode_request)
+                    else:
+                        result += '''\
+# Insert_node
+insertnode_request = None
+'''
                 else:
                     result += inp
 
