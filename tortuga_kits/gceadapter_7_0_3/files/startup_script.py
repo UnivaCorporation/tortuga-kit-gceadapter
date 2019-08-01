@@ -23,54 +23,129 @@ import subprocess
 import sys
 import time
 import urllib2
+import itertools
 
 
 ### SETTINGS
 
+def get_instance_data(path):
+    url = 'http://169.254.169.254/computeMetadata/v1/instance' + path
 
-def runCommand(cmd, retries=1):
-    for nRetry in range(retries):
-        p = subprocess.Popen(cmd, shell=True)
+    req = urllib2.Request(url)
+    req.add_header('Metadata-Flavor', 'Google')
 
-        retval = p.wait()
-        if retval == 0:
+    for nCount in range(5):
+        try:
+            response = urllib2.urlopen(req)
             break
+        except urllib2.URLError as ex:
+            pass
+        except urllib2.HTTPError as ex:
+            if ex.code == 404:
+                raise
 
-        time.sleep(5 + 2 ** (nRetry * 0.75))
+            time.sleep(2 ** (nCount + 1))
     else:
-        return -1
+        raise Exception('Unable to communicate with metadata webservice')
 
-    return retval
+    if response.code != 200:
+        raise Exception('Unable to read %s' % path)
+    return response.read()
 
+def addNode():
+    tryCommand("mkdir -p /etc/pki/ca-trust/source/anchors/")
+    tryCommand("curl http://%s:8008/ca.pem > /etc/pki/ca-trust/source/anchors/tortuga-ca.pem" % installerIpAddress)
+    tryCommand("update-ca-trust")
+    instance_id = get_instance_data('/name')
+    local_hostname = get_instance_data('/hostname')
+    data = {
+            'node_details': {
+                'name': local_hostname,
+                'metadata': {
+                    'instance_name': instance_id,
+                }
+            }
+           }
+    print(data)
+    url = 'https://%s:%s/v1/node-token/%s' % (installerHostName, port, insertnode_request)
+    req = urllib2.Request(url)
 
-def _installPackage(pkgname, retries=10):
-    if _isPackageInstalled(pkgname):
-        return
+    req.add_header('Content-Type', 'application/json')
 
-    cmd = 'yum -y install %s' % (pkgname)
+    for nCount in range(5):
+        try:
+            response = urllib2.urlopen(req, json.dumps(data))
+            break
+        except urllib2.URLError as ex:
+            pass
+        except urllib2.HTTPError as ex:
+            if ex.code == 401:
+                raise Exception(
+                    'Invalid Tortuga webservice credentials')
+            elif ex.code == 404:
+                # Unrecoverable
+                raise Exception(
+                    'URI not found; invalid Tortuga webservice'
+                    ' configuration')
 
-    retval = runCommand(cmd, retries)
+            time.sleep(2 ** (nCount + 1))
+    else:
+        raise Exception('Unable to communicate with Tortuga webservice')
+
+    d = json.load(response)
+
+    if response.code != 200:
+        if 'error' in d:
+            errmsg = 'Tortuga webservice error: msg=[%s]' % (
+                error['message'])
+        else:
+            errmsg = 'Tortuga webservice internal error'
+
+        raise Exception(errmsg)
+    print(d)
+
+def tryCommand(command, good_return_values=(0,), retry_limit=0,
+               time_limit=0, max_sleep_time=15000, sleep_interval=2000):
+    total_sleep_time = 0
+    returned = -1
+    for retries in itertools.count(0):
+        returned = subprocess.Popen(command, shell=True).wait()
+        if returned in good_return_values or \
+                retries >= retry_limit or total_sleep_time >= time_limit:
+            return returned
+
+        seed = min(max_sleep_time, sleep_interval * 2 ** retries)
+        sleep_for = (seed / 2 + random.randint(0, seed / 2)) / 1000.0
+        total_sleep_time += sleep_for
+
+        time.sleep(sleep_for)
+    return returned
+
+def _installPackage(pkgList, yumopts=None, retries=10):
+    cmd = 'yum'
+
+    if yumopts:
+        cmd += ' ' + yumopts
+
+    cmd += ' -y install %s' % pkgList
+
+    retval = tryCommand(cmd, retry_limit=retries)
     if retval != 0:
-        raise Exception('Error installing package [%s]' % (pkgname))
+        raise Exception('Error installing package [%s]' % (pkgList))
+
+def _isPackageInstalled(pkgName):
+    return tryCommand('rpm -q --quiet %s' % pkgName) == 0
 
 
-def _isPackageInstalled(pkgname):
-    return (runCommand('rpm --query --quiet %s' % (pkgname)) == 0)
-
-
-def install_puppet(distro_maj_vers):
+def install_puppet(vers):
     pkgname = 'puppet5-release'
 
-    url = (
-        'http://yum.puppetlabs.com/puppet5/%s-el-%s.noarch.rpm' % (
-            pkgname, distro_maj_vers
-        )
-    )
+    url = 'http://yum.puppetlabs.com/puppet5/%s-el-%s.noarch.rpm' % (pkgname, vers)
 
     bRepoInstalled = _isPackageInstalled(pkgname)
 
     if not bRepoInstalled:
-        retval = runCommand('rpm -ivh %s' % (url), 5)
+        retval = tryCommand('rpm -ivh %s' % (url), retry_limit=5)
         if retval != 0:
             sys.stderr.write(
                 'Error: unable to install package \"{0}\"\n'.format(pkgname))
@@ -80,67 +155,6 @@ def install_puppet(distro_maj_vers):
     # Attempt to install puppet
     if not _isPackageInstalled('puppet-agent'):
         _installPackage('puppet-agent')
-
-
-def set_hostname():
-    url = 'https://%s:%s/v1/identify-node' % (installerIpAddress, port)
-
-    req = urllib2.Request(url)
-
-    req.add_header('Authorization',
-                   'Basic ' + base64.standard_b64encode(
-                       '%s:%s' % (cfmUser, cfmPassword)))
-
-    for nCount in range(5):
-        try:
-            response = urllib2.urlopen(req)
-
-            break
-        except urllib2.URLError:
-            pass
-        except urllib2.HTTPError as ex:
-            if ex.code == 401:
-                sys.stderr.write('Invalid Tortuga webservice credentials\n')
-                sys.exit(1)
-            elif ex.code == 404:
-                # Unrecoverable
-                sys.stderr.write(
-                    'URI not found; invalid Tortuga webservice'
-                    ' configuration\n')
-                sys.exit(1)
-
-            time.sleep(2 ** (nCount + 1))
-    else:
-        sys.stderr.write('Unable to communicate with Tortuga webservice\n')
-        sys.exit(1)
-
-    try:
-        d = json.load(response)
-
-        if response.code != 200:
-            if 'error' in d:
-                errmsg = 'Tortuga webservice error: msg=[%s]' % (
-                    error['message'])
-            else:
-                errmsg = 'Tortuga webservice internal error'
-
-            raise Exception(errmsg)
-
-        if 'node' not in d or 'name' not in d['node']:
-            raise Exception('Malformed JSON response from Tortuga webservice')
-
-        hostname = d['node']['name'].lower()
-    except ValueError as exc:
-        raise Exception('Unable to parse JSON response (reason=[%s])' % (exc))
-
-    # TODO: this only applies to RHEL/CentOS <= 6
-    runCommand('hostname %s' % (hostname))
-
-    with open('/etc/sysconfig/network', 'a') as fp:
-        fp.write('HOSTNAME=\"%s\"\n' % (hostname))
-
-    return hostname
-
 
 def update_resolv_conf():
     found_nameserver = False
@@ -171,68 +185,22 @@ def update_resolv_conf():
     shutil.move(fn, fn + '.orig')
     shutil.copyfile(fn + '.tortuga', fn)
 
-
-def get_private_ip():
-    cmd = ('ifconfig eth0 | grep \'inet \''
-           ' | awk "{print \$2}" | sed "s/addr://"')
-
-    p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)
-
-    result = p.communicate()
-
-    ip = result[0].rstrip()
-
-    return ip
-
-
-def update_hosts_file(hostname):
-    ip = get_private_ip()
-
-    with open('/etc/hosts') as fpsrc:
-        with open('/etc/hosts.new', 'w') as fpdst:
-            for line in fpsrc.readlines():
-                if line.startswith('#') or not line.rstrip():
-                    fpdst.write(line)
-
-                    continue
-
-                host_ip, host_ent = line.split(' ', 1)
-
-                if host_ip == ip:
-                    fpdst.write('%-16s %s %s' % (host_ip, hostname, host_ent))
-                else:
-                    fpdst.write(line)
-
-            # Add entry for Tortuga installer
-            fpdst.write('%-16s %s\n' % (installerIpAddress, installerHostName))
-
-            fpdst.write('169.254.169.254 metadata\n')
-
-    if not os.path.exists('/etc/hosts.orig'):
-        shutil.copy('/etc/hosts', '/etc/hosts.orig')
-
-    shutil.copy('/etc/hosts.new', '/etc/hosts')
-
-    os.unlink('/etc/hosts.new')
-
-
-def wait_for_host(hostname):
-    cmd = 'ping -c5 %s | grep -qv "0 received"' % (hostname)
-
-    return runCommand(cmd, retries=5)
-
-
 def bootstrap_puppet():
+    tryCommand("touch /tmp/puppet_bootstrap.log")
     cmd = ('/opt/puppetlabs/bin/puppet agent'
            ' --logdest /tmp/puppet_bootstrap.log'
+           ' --no-daemonize'
            ' --onetime --server %s --waitforcert 120' % (installerHostName))
 
-    runCommand(cmd)
+    tryCommand(cmd)
 
 def register_compute():
-    runCommand('echo "%s" >> /.tortuga_execd' %(installerHostName))
+    tryCommand('echo "%s" >> /.tortuga_execd' %(installerHostName))
 
 def main():
+    if insertnode_request is not None:
+        addNode()
+
     register_compute()
     vals = platform.dist()
 

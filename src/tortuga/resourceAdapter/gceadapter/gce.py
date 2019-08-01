@@ -27,7 +27,9 @@ from gevent.queue import JoinableQueue
 from google.auth import compute_engine
 from google.oauth2 import service_account
 from sqlalchemy.orm.session import Session
+from sqlalchemy.orm.exc import NoResultFound
 
+from tortuga.addhost.utility import encrypt_insertnode_request
 from tortuga.db.models.hardwareProfile import HardwareProfile
 from tortuga.db.models.instanceMapping import InstanceMapping
 from tortuga.db.models.instanceMetadata import InstanceMetadata
@@ -45,6 +47,8 @@ from tortuga.resourceAdapter.resourceAdapter \
     import (DEFAULT_CONFIGURATION_PROFILE_NAME, ResourceAdapter)
 from tortuga.resourceAdapterConfiguration import settings
 from tortuga.utility.cloudinit import get_cloud_init_path
+from tortuga.exceptions.invalidArgument import InvalidArgument
+
 
 
 API_VERSION = 'v1'
@@ -226,6 +230,23 @@ class Gce(ResourceAdapter): \
                                             dbHardwareProfile,
                                             dbSoftwareProfile)
 
+        if 'nodeDetails' in addNodesRequest and \
+            addNodesRequest['nodeDetails']:
+            # Instances already exist, create node records
+            if 'metadata' in addNodesRequest['nodeDetails'][0] and \
+                    'instance_name' in \
+                    addNodesRequest['nodeDetails'][0]['metadata']:
+                # inserting nodes based on metadata
+                node = self.__insert_node(gce_session, dbSession,
+                           dbHardwareProfile, dbSoftwareProfile,
+                           addNodesRequest['nodeDetails'][0],
+                           addNodesRequest.get('resource_adapter_configuration')
+                )
+
+                dbSession.commit()
+
+                return [node]
+
         # Add regular instance-backed (active) nodes
         nodes = self.__addActiveNodes(
             gce_session,
@@ -406,6 +427,127 @@ class Gce(ResourceAdapter): \
             zone=zone
         ).execute()
 
+    def __get_node_by_instance(self, session: Session,
+                               instance_name: str) -> Optional[Node]:
+        try:
+            return session.query(InstanceMapping).filter(
+                InstanceMapping.instance==instance_name  # noqa
+            ).one().node
+        except NoResultFound:
+            pass
+
+        return None
+
+    def __insert_node(self, session: dict, dbSession: Session,
+                       dbHardwareProfile: HardwareProfile, dbSoftwareProfile: SoftwareProfile,
+                       nodeDetail: Dict[str, Any], resourceAdapter: str
+                       ) -> List[Node]:
+        """
+        Directly insert nodes with pre-existing GCP instances
+
+        This is primarily used for supporting spot instances where an
+        AWS instance exists before the Tortuga associated node record.
+        """
+
+        self._logger.info(
+            'Inserting %d node', 1
+        )
+
+        instance_name: Optional[str] = \
+            nodeDetail['metadata']['instance_name'] \
+            if 'metadata' in nodeDetail and \
+            'instance_name' in nodeDetail['metadata'] else None
+        if not instance_name:
+            # TODO: currently not handled
+            self._logger.error(
+                'instance_name not set in metadata. Unable to insert GCE nodes'
+                ' without backing instance'
+            )
+
+            return None
+
+        instance = self.gce_get_vm(session, instance_name)
+
+        if not instance:
+            self._logger.warning(
+                'Error inserting node [%s]. GCP instance [%s] does not exist',
+                instance_name,
+            )
+
+            return None
+
+        node_created = False
+
+        node = self.__get_node_by_instance(dbSession, instance_name)
+        if node is None:
+            try:
+                # use resource adapter 'vcpus' override, otherwise fallback to
+                # vm type-based lookup
+                vcpus = session['config'].get('vcpus')
+                if vcpus is None:
+                    vcpus = self.get_instance_size_mapping(session['config']['type'])
+
+                node = self.__init_new_node(
+                        session,
+                        nodeDetail['name'],
+                        dbHardwareProfile,
+                        dbSoftwareProfile,
+                        metadata={
+                            'vcpus': vcpus,
+                        },
+                    ) 
+
+                node_created = True
+                node.state = state.NODE_STATE_PROVISIONED
+            except InvalidArgument:
+                self._logger.exception(
+                    'Error creating new node record in insert workflow'
+                )
+                raise
+
+        else:
+            self._logger.debug(
+                'Found existing node record [%s] for instance id [%s]',
+                node.name, instance_name
+            )
+
+        # set node properties
+
+        # Create nics for instance
+        internal_ip = self.__get_instance_internal_ip(instance)
+        if internal_ip is None:
+            self._logger.error(
+                'VM [%s] does not have an IP address (???)', vm_inst
+            )
+
+            return
+
+        node.nics.append(Nic(ip=internal_ip, boot=True))
+
+        # Call pre-add-host to set up DNS record
+        self._pre_add_host(
+            node.name,
+            node.hardwareprofile.name,
+            node.softwareprofile.name,
+            internal_ip,
+        )
+
+        node.instance = InstanceMapping(
+            instance=instance_name,
+            resource_adapter_configuration=self.load_resource_adapter_config(
+                dbSession,
+                resourceAdapter
+                )
+        )
+
+        if node_created:
+            # only fire the new node event if creating the record for the
+            # first time
+            self.fire_provisioned_event(node)
+
+        return node
+
+
     def startupNode(self, nodes: List[Node],
                     remainingNodeList: Optional[str] = None,
                     tmpBootMethod: str = 'n'): \
@@ -524,7 +666,7 @@ class Gce(ResourceAdapter): \
             'connection': gceAuthorize_from_json(config.get('json_keyfile')),
         }
 
-    def __getStartupScript(self, configDict: dict) -> Optional[str]:
+    def __getStartupScript(self, configDict: dict, insertnode_request: Optional[bytes] = None) -> Optional[str]:
         """
         Build a node/instance-specific startup script that will initialize
         VPN, install Puppet, and the bootstrap the instance.
@@ -552,7 +694,7 @@ class Gce(ResourceAdapter): \
             'cfmuser': self._cm.getCfmUser(),
             'cfmpassword': self._cm.getCfmPassword(),
             'override_dns_domain': str(configDict['override_dns_domain']),
-            'dns_domain': str(configDict['dns_domain']),
+            'dns_domain': quoted_val(str(configDict['dns_domain'])),
             'dns_options': quoted_val(configDict['dns_options'])
             if configDict.get('dns_options') else None,
             'dns_nameservers': _get_encoded_list(
@@ -568,8 +710,6 @@ class Gce(ResourceAdapter): \
 installerHostName = '%(installerHostName)s'
 installerIpAddress = '%(installerIp)s'
 port = %(adminport)s
-cfmUser = '%(cfmuser)s'
-cfmPassword = '%(cfmpassword)s'
 
 # DNS settings
 override_dns_domain = %(override_dns_domain)s
@@ -577,6 +717,16 @@ dns_options = %(dns_options)s
 dns_search = %(dns_domain)s
 dns_nameservers = %(dns_nameservers)s
 ''' % (config)
+                    if insertnode_request is not None:
+                        result += '''\
+# Insert_node
+insertnode_request = %s
+''' % (insertnode_request)
+                    else:
+                        result += '''\
+# Insert_node
+insertnode_request = None
+'''
                 else:
                     result += inp
 
@@ -692,15 +842,18 @@ dns_nameservers = %(dns_nameservers)s
         with open(os.path.join(dstdir, 'user-data'), 'w') as fp:
             fp.write(user_data_yaml)
 
-    def __get_instance_metadata(self, session: dict, pending_node: dict) \
+    def __get_instance_metadata(self, session: dict, pending_node: Optional[dict] = None,
+            insertnode_request: Optional[bytes] = None) \
             -> List[Tuple[str, Any]]:
-        node = pending_node['node']
+        node = None
+        if pending_node is not None:
+            node = pending_node['node']
 
         metadata = self.__get_metadata(session)
 
         # Default to using startup-script
         if 'startup_script_template' in session['config']:
-            startup_script = self.__getStartupScript(session['config'])
+            startup_script = self.__getStartupScript(session['config'], insertnode_request)
 
             if startup_script:
                 metadata.append(('startup-script', startup_script))
@@ -710,11 +863,12 @@ dns_nameservers = %(dns_nameservers)s
             # with open(tmpfn, 'w') as fp:
             #     fp.write(startup_script + '\n')
         else:
-            self._logger.warning(
-                'Startup script template not defined for hardware'
-                ' profile [%s]', node.hardwareprofile.name)
+            if node is not None:
+                self._logger.warning(
+                    'Startup script template not defined for hardware'
+                    ' profile [%s]', node.hardwareprofile.name)
 
-        if session['config']['override_dns_domain']:
+        if node is not None and session['config']['override_dns_domain']:
             metadata.append(('hostname', node.name))
 
         return metadata
@@ -1240,18 +1394,16 @@ dns_nameservers = %(dns_nameservers)s
             zone=session['config']['zone']
         ).execute()
 
-    def __launch_instance(self, session: dict, instance_name: str,
+    def __get_instance_properties(self, session: dict,
                           metadata: List[Tuple[str, Any]],
                           common_launch_args, *,
                           persistent_disks: List[dict]) -> dict:
-        # This is the lowest level interface to Google Compute Engine
-        # API to launch an instance.  It depends on 'session' (dict) to
+        # Get common instance launch parameters.  Used when creating an
+        # instance or instance template.  It depends on 'session' (dict) to
         # contain settings, but this could easily be mocked.
 
         self._logger.debug(
-            '__launch_instance(): instance_name=[%s]', instance_name)
-
-        connection = session['connection']
+            '__get_instance_properties()')
 
         config = session['config']
 
@@ -1262,7 +1414,8 @@ dns_nameservers = %(dns_nameservers)s
             project_url, config['zone'], config['type'])
 
         instance = {
-            'name': instance_name,
+            # Name is filled in by the caller.
+            # 'name': instance_name,
             'machineType': machine_type_url,
             'labels': session['tags'],
             'disks': [
@@ -1321,7 +1474,208 @@ dns_nameservers = %(dns_nameservers)s
             'items': [dict(key=key, value=value) for key, value in metadata],
         }
 
-        # Create the instance
+        return instance
+
+    def delete_scale_set(self,
+              name: str,
+              resourceAdapterProfile: str):
+
+        """
+        Delete an existing scale set
+
+        :raises InvalidArgument:
+        """
+        session = self.get_gce_session(
+            resourceAdapterProfile
+        )
+
+        connection = session['connection']
+
+        config = session['config']
+
+        normalized_name = "scale-set-" + name
+
+        try:
+            initial_response = connection.svc.instanceGroupManagers().delete(
+                project=config['project'],
+                zone=config['zone'],
+                instanceGroupManager=normalized_name
+            ).execute()
+            # Wait for this to exist before continuing
+            result = _blocking_call(
+                    session['connection'].svc,
+                    session['config']['project'],
+                    initial_response,
+                    polling_interval=session['config']['sleeptime'])    
+        except Exception as ex:
+            if not ex.message.startswith("AutoScalingGroup name not found"):
+                raise
+        finally:
+            try:
+                connection.svc.instanceTemplates().delete(
+                    project=config['project'],
+                    instanceTemplate=normalized_name
+                ).execute()
+            except Exception as ex:
+                if not ex.message.startswith("Launch configuration name not found"):
+                    raise
+
+    def update_scale_set(self,
+              name: str,
+              resourceAdapterProfile: str,
+              hardwareProfile: str,
+              softwareProfile: str,
+              minCount: int,
+              maxCount: int,
+              desiredCount: int):
+
+        """
+        Updates an existing scale set
+
+        :raises InvalidArgument:
+        """
+        session = self.get_gce_session(
+            resourceAdapterProfile
+        )
+
+        connection = session['connection']
+
+        config = session['config']
+
+        normalized_name = "scale-set-" + name
+        connection.svc.instanceGroupManagers().resize(
+            project=config['project'],
+            zone=config['zone'],
+            instanceGroupManager=normalized_name,
+            size=desiredCount).execute()
+
+    def create_scale_set(self,
+              name: str,
+              resourceAdapterProfile: str,
+              hardwareProfile: str,
+              softwareProfile: str,
+              minCount: int,
+              maxCount: int,
+              desiredCount: int):
+
+        """
+        Create a scale set in GCE
+
+        :raises InvalidArgument:
+        """
+
+        self._logger.debug(
+            'create_scale_set(): name=[%s]', name)
+
+        session = self.get_gce_session(
+            resourceAdapterProfile
+        )
+
+        connection = session['connection']
+
+        config = session['config']
+
+        insertnode_request = {
+                   'softwareProfile': softwareProfile,
+                   'hardwareProfile': hardwareProfile,
+        }
+
+        try:
+            metadata = self.__get_instance_metadata(session, 
+                insertnode_request=encrypt_insertnode_request(
+                    self._cm.get_encryption_key(),
+                    insertnode_request
+                )
+            )
+        except Exception:
+            self._logger.exception(
+                'Error getting metadata'
+                )
+            raise
+
+        common_launch_args = self.__get_common_launch_args(
+            session
+        )
+
+        # Just support root disks in scale mode
+        persistent_disks =  [{
+                    'sizeGb': session['config']['disksize'],
+        }]
+
+        instance = self.__get_instance_properties(session,
+                          metadata,
+                          common_launch_args,
+                          persistent_disks=persistent_disks)
+
+        # Override a few fields to meet instanceTemplates API
+        instance["machineType"] = config['type']
+        for disk in instance["disks"]:
+            disk["initializeParams"]["diskType"] = \
+                os.path.basename(disk["initializeParams"]["diskType"])    
+
+        normalized_name = "scale-set-" + name
+
+        instanceTemplate = {
+            "name": normalized_name,
+            "properties" : instance,
+        }
+
+        instanceGroup = {
+            "baseInstanceName": softwareProfile.lower().replace("_","-"),
+            "instanceTemplate": "global/instanceTemplates/" + normalized_name,
+            "versions": [
+                { "instanceTemplate": "global/instanceTemplates/" + normalized_name }
+            ],
+            "name": normalized_name,
+            "targetSize": desiredCount
+        }
+
+        try:
+            initial_response = connection.svc.instanceTemplates().insert(
+                project=config['project'],
+                body=instanceTemplate
+            ).execute()
+            result = _blocking_call(
+                    session['connection'].svc,
+                    session['config']['project'],
+                    initial_response,
+                    polling_interval=session['config']['sleeptime'])
+            connection.svc.instanceGroupManagers().insert(
+                project=config['project'],
+                body=instanceGroup,
+                zone=config['zone']
+            ).execute()
+        except Exception as ex:
+            connection.svc.instanceTemplates().delete(
+                project=config['project'],
+                instanceTemplate=normalized_name
+            ).execute()
+            raise ex
+
+    def __launch_instance(self, session: dict, instance_name: str,
+                          metadata: List[Tuple[str, Any]],
+                          common_launch_args, *,
+                          persistent_disks: List[dict]) -> dict:
+        # This is the lowest level interface to Google Compute Engine
+        # API to launch an instance.  It depends on 'session' (dict) to
+        # contain settings, but this could easily be mocked.
+
+        self._logger.debug(
+            '__launch_instance(): instance_name=[%s]', instance_name)
+
+        connection = session['connection']
+
+        config = session['config']
+
+        instance = self.__get_instance_properties(session,
+                          metadata,
+                          common_launch_args,
+                          persistent_disks=persistent_disks)
+
+        # Need to set the instance name as the proprties helper
+        # does not do that
+        instance["name"] = instance_name
+
         return connection.svc.instances().insert(
             project=config['project'],
             body=instance,
