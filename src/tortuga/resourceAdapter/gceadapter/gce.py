@@ -26,7 +26,7 @@ import googleapiclient.discovery
 from gevent.queue import JoinableQueue
 from google.auth import compute_engine
 from google.oauth2 import service_account
-from sqlalchemy.orm.session import Session
+from sqlalchemy.orm.session import Session, sessionmaker
 from sqlalchemy.orm.exc import NoResultFound
 
 from tortuga.addhost.utility import encrypt_insertnode_request
@@ -42,6 +42,9 @@ from tortuga.exceptions.configurationError import ConfigurationError
 from tortuga.exceptions.nodeNotFound import NodeNotFound
 from tortuga.exceptions.operationFailed import OperationFailed
 from tortuga.exceptions.unsupportedOperation import UnsupportedOperation
+from tortuga.db.hardwareProfilesDbHandler import HardwareProfilesDbHandler
+from tortuga.db.softwareProfilesDbHandler import SoftwareProfilesDbHandler
+from tortuga.web_service.database import dbm
 from tortuga.node import state
 from tortuga.resourceAdapter.resourceAdapter \
     import (DEFAULT_CONFIGURATION_PROFILE_NAME, ResourceAdapter)
@@ -227,8 +230,8 @@ class Gce(ResourceAdapter): \
             addNodesRequest.get('resource_adapter_configuration'))
 
         gce_session['tags'] = self.get_tags(gce_session['config'],
-                                            dbHardwareProfile,
-                                            dbSoftwareProfile)
+                                            dbHardwareProfile.name,
+                                            dbSoftwareProfile.name)
 
         if 'nodeDetails' in addNodesRequest and \
             addNodesRequest['nodeDetails']:
@@ -1533,10 +1536,15 @@ insertnode_request = None
         Updates an existing scale set
 
         :raises InvalidArgument:
+
         """
+        adapter_config = self.get_config(resourceAdapterProfile)
+        tags = self.get_tags(adapter_config, hardwareProfile, softwareProfile)
+
         session = self.get_gce_session(
             resourceAdapterProfile
         )
+        session['tags'] = tags
 
         connection = session['connection']
 
@@ -1562,14 +1570,18 @@ insertnode_request = None
         Create a scale set in GCE
 
         :raises InvalidArgument:
-        """
 
+        """
         self._logger.debug(
             'create_scale_set(): name=[%s]', name)
+
+        adapter_config = self.get_config(resourceAdapterProfile)
+        tags = self.get_tags(adapter_config, hardwareProfile, softwareProfile)
 
         session = self.get_gce_session(
             resourceAdapterProfile
         )
+        session['tags'] = tags
 
         connection = session['connection']
 
