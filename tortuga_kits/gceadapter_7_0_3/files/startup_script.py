@@ -209,6 +209,9 @@ def main():
     if override_dns_domain:
         update_resolv_conf()
 
+    if not _isPackageInstalled('git'):
+        _installPackage('git')
+
     install_puppet(distro_maj_vers)
 
     bootstrap_puppet()
