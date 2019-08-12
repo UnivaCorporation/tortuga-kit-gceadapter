@@ -1527,7 +1527,8 @@ insertnode_request = None
               softwareProfile: str,
               minCount: int,
               maxCount: int,
-              desiredCount: int):
+              desiredCount: int,
+              adapter_args: dict):
 
         """
         Updates an existing scale set
@@ -1556,7 +1557,8 @@ insertnode_request = None
               softwareProfile: str,
               minCount: int,
               maxCount: int,
-              desiredCount: int):
+              desiredCount: int,
+              adapter_args: dict):
 
         """
         Create a scale set in GCE
@@ -1594,7 +1596,8 @@ insertnode_request = None
             raise
 
         common_launch_args = self.__get_common_launch_args(
-            session
+            session,
+            extra_args=adapter_args.get('extra_args',{})
         )
 
         # Just support root disks in scale mode
