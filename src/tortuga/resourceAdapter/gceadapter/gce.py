@@ -173,6 +173,9 @@ class Gce(ResourceAdapter): \
             default='https://www.googleapis.com/auth/devstorage.full_control\n'
                     'https://www.googleapis.com/auth/compute',
         ),
+        'preemptible': settings.BooleanSetting(
+             display='Launch instances as preemptible.'
+         ),
         'override_dns_domain': settings.BooleanSetting(default='False'),
         'dns_domain': settings.StringSetting(requires='override_dns_domain'),
         'dns_options': settings.StringSetting(),
@@ -1024,8 +1027,10 @@ insertnode_request = None
                 session['config']['networks'],
             )
 
-        common_launch_args['preemptible'] = \
-            'preemptible' in extra_args if extra_args else False
+        common_launch_args['preemptible'] = session['config']['preemptible']
+        if extra_args:
+            if 'preemptible' in extra_args:
+                common_launch_args['preemptible'] = True
 
         if 'accelerators' in session['config']:
             common_launch_args['accelerators'] = \
