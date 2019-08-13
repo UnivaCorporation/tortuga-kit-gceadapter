@@ -176,6 +176,9 @@ class Gce(ResourceAdapter): \
             default='https://www.googleapis.com/auth/devstorage.full_control\n'
                     'https://www.googleapis.com/auth/compute',
         ),
+        'preemptible': settings.BooleanSetting(
+             display='Launch instances as preemptible.'
+         ),
         'override_dns_domain': settings.BooleanSetting(default='False'),
         'dns_domain': settings.StringSetting(requires='override_dns_domain'),
         'dns_options': settings.StringSetting(),
@@ -1027,8 +1030,10 @@ insertnode_request = None
                 session['config']['networks'],
             )
 
-        common_launch_args['preemptible'] = \
-            'preemptible' in extra_args if extra_args else False
+        common_launch_args['preemptible'] = session['config']['preemptible']
+        if extra_args:
+            if 'preemptible' in extra_args:
+                common_launch_args['preemptible'] = True
 
         if 'accelerators' in session['config']:
             common_launch_args['accelerators'] = \
@@ -1530,7 +1535,8 @@ insertnode_request = None
               softwareProfile: str,
               minCount: int,
               maxCount: int,
-              desiredCount: int):
+              desiredCount: int,
+              adapter_args: dict):
 
         """
         Updates an existing scale set
@@ -1564,7 +1570,8 @@ insertnode_request = None
               softwareProfile: str,
               minCount: int,
               maxCount: int,
-              desiredCount: int):
+              desiredCount: int,
+              adapter_args: dict):
 
         """
         Create a scale set in GCE
@@ -1606,7 +1613,8 @@ insertnode_request = None
             raise
 
         common_launch_args = self.__get_common_launch_args(
-            session
+            session,
+            extra_args=adapter_args.get('extra_args',{})
         )
 
         # Just support root disks in scale mode

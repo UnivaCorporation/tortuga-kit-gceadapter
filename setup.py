@@ -42,7 +42,6 @@ setup(
     entry_points={
         'console_scripts': [
             'setup-gce=tortuga.scripts.setup_gce:main',
-            'gce_monitord=tortuga.scripts.gce_monitord:main',
         ]
     }
 )

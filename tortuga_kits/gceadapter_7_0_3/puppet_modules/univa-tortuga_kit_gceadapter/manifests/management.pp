@@ -29,53 +29,6 @@ class tortuga_kit_gceadapter::management::post_install {
   }
 }
 
-class tortuga_kit_gceadapter::management::config {
-  require tortuga_kit_gceadapter::management::post_install
-
-  include tortuga::config
-
-  # FYI... the logic to install the Python packages has been moved into the
-  # 'management' component post-install action.
-
-  $instroot = $tortuga::config::instroot
-
-  if versioncmp($::operatingsystemmajrelease, '7') < 0 {
-    file { '/etc/rc.d/init.d/gce_monitord':
-      content => template('tortuga_kit_gceadapter/gce_monitord.sysvinit.erb'),
-      mode    => '0755',
-    }
-  } elsif versioncmp($::operatingsystemmajrelease, '7') >= 0 {
-    # Install systemd service file on RHEL/CentOS 7.x
-
-    file { '/usr/lib/systemd/system/gce_monitord.service':
-      content => template('tortuga_kit_gceadapter/gce_monitord.service.erb'),
-      mode    => '0644',
-    } ~>
-    exec { 'refresh_after_installing_gce_monitord_service':
-      command     => '/bin/systemctl daemon-reload',
-      refreshonly => true,
-    }
-  }
-
-}
-
-class tortuga_kit_gceadapter::management::service {
-  require tortuga_kit_gceadapter::management::config
-
-  if versioncmp($::operatingsystemmajrelease, '7') < 0 {
-    $svcname = 'gce_monitord'
-  } else {
-    $svcname = 'gce_monitord.service'
-  }
-
-  service { $svcname:
-    # ensure     => running,
-    # enable     => true,
-    hasstatus  => true,
-    hasrestart => true,
-  }
-}
-
 class tortuga_kit_gceadapter::management {
   include tortuga_kit_gceadapter::config
 
@@ -83,12 +36,4 @@ class tortuga_kit_gceadapter::management {
 
   # Install dependent packages, configure them, and restart Tortuga webservice
   contain tortuga_kit_gceadapter::management::package
-  contain tortuga_kit_gceadapter::management::config
-  contain tortuga_kit_gceadapter::management::service
-
-  Class['tortuga_kit_gceadapter::management::config'] ~>
-    Class['tortuga_kit_gceadapter::management::service']
-
-  Class['tortuga_kit_gceadapter::management::config'] ~>
-    Class['tortuga_kit_base::installer::webservice::server']
 }

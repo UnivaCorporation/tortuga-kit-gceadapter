@@ -132,7 +132,9 @@ class GceScaleSetCreatedListener(GceScaleSetListenerMixin, BaseListener):
                 desiredCount=ssr.desired_nodes,
                 resourceAdapterProfile=ssr.resourceadapter_profile_name,
                 hardwareProfile=ssr.hardwareprofile_name,
-                softwareProfile=ssr.softwareprofile_name)
+                softwareProfile=ssr.softwareprofile_name,
+                adapter_args=ssr.adapter_arguments
+            )
         except Exception as ex:
             logger.error("Error creating resource request: %s", ex)
             self._store.delete(ssr.id)
@@ -168,7 +170,9 @@ class GceScaleSetUpdatedListener(GceScaleSetListenerMixin, BaseListener):
                 desiredCount=ssr.desired_nodes,
                 resourceAdapterProfile=ssr.resourceadapter_profile_name,
                 hardwareProfile=ssr.hardwareprofile_name,
-                softwareProfile=ssr.softwareprofile_name)
+                softwareProfile=ssr.softwareprofile_name,
+                adapter_args=ssr.adapter_arguments
+            )
         except Exception as ex:
             logger.error("Error updating resource request: %s", ex)
             old = self.get_previous_scale_set_request(event)
