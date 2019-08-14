@@ -208,13 +208,13 @@ class Gce(ResourceAdapter): \
             display_name='Cost Synchronization Enabled',
             group='Cost Sync',
             group_order=9,
-            description='Enable GCE cost synchronization'
+            description='Enable GCE cost synchronization',
+            requires=['cost_dataset_name']
         ),
         'cost_dataset_name': settings.StringSetting(
             display_name='Dataset Name',
             group='Cost Sync',
             group_order=9,
-            required=True,
             requires=['cost_sync_enabled'],
             description='The name of the GCE BigQuery dataset in which '
                         'cost data is stored'
