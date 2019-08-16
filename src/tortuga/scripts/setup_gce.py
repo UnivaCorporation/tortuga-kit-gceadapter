@@ -229,15 +229,17 @@ class ResourceAdapterSetup(TortugaCli):
         if not os.path.exists(key_path):
             print(self.format_error('Key file not found: {}', key_path))
             print(self.format(
-                'To resolve this issue, please do the following:'))
+                'This may not be a problem if you have a service account '
+                'with appropriate credentials attached to this instance.'
+                'To use a JSON key file instead, please do the following:'
+            ))
             print(
                 '  - Create a Google Cloud Service account in your project\n'
                 '  - Generate a key for that service account\n'
                 '  - Download the key as a JSON file\n'
                 '  - Place that JSON file in the location specified above'
             )
-            exit(0)
-            pass
+            return None
 
         #
         # Authenticate for future runs of the gcloud command
@@ -298,8 +300,8 @@ class ResourceAdapterSetup(TortugaCli):
         return r.text.strip()
 
     def get_config(self) -> Dict[str, str]:
-        return {
-            'json_keyfile': self._get_keyfile(),
+        json_keyfile = self._get_keyfile()
+        result = {
             'project': self._get_project(),
             'zone': self._get_zone(),
             'network': self._get_network(),
@@ -309,6 +311,9 @@ class ResourceAdapterSetup(TortugaCli):
             'startup_script_template': ResourceAdapterSetup.DEFAULT_SCRIPT_TEMPLATE,
             'disksize': ResourceAdapterSetup.DEFAULT_DISK_SIZE
         }
+        if json_keyfile:
+            result['json_keyfile'] = json_keyfile
+        return result
 
 
 def main():
