@@ -200,6 +200,25 @@ class Gce(ResourceAdapter): \
             'to prevent name collisions in highly dynamic environments',
             default='True',
         ),
+
+        #
+        # Settings for Navops Launch 2.0
+        #
+        'cost_sync_enabled': settings.BooleanSetting(
+            display_name='Cost Synchronization Enabled',
+            group='Cost Sync',
+            group_order=9,
+            description='Enable GCE cost synchronization',
+            requires=['cost_dataset_name']
+        ),
+        'cost_dataset_name': settings.StringSetting(
+            display_name='Dataset Name',
+            group='Cost Sync',
+            group_order=9,
+            requires=['cost_sync_enabled'],
+            description='The name of the GCE BigQuery dataset in which '
+                        'cost data is stored'
+        ),
     }
 
     def __init__(self, addHostSession: Optional[str] = None):
