@@ -916,7 +916,7 @@ insertnode_request = None
         self._logger.debug(
             'Preemptible flag {} enabled'.format(
                 '*is*'
-                if common_launch_args['preemptible'] else 'is not'
+                if common_launch_args.get('preemptible', False) else 'is not'
             )
         )
 
@@ -976,6 +976,10 @@ insertnode_request = None
                 InstanceMetadata(
                     key='zone',
                     value=node_request['response']['zone'].split('/')[-1]
+                ),
+                InstanceMetadata(
+                    key='project',
+                    value=session['config']['project']
                 ),
             ]
 
@@ -1049,7 +1053,7 @@ insertnode_request = None
                 session['config']['networks'],
             )
 
-        common_launch_args['preemptible'] = session['config']['preemptible']
+        common_launch_args['preemptible'] = session['config'].get('preemptible', False)
         if extra_args:
             if 'preemptible' in extra_args:
                 common_launch_args['preemptible'] = True
