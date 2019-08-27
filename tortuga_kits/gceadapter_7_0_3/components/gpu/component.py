@@ -17,7 +17,7 @@ from tortuga.kit.installer import ComponentInstallerBase
 
 class ComponentInstaller(ComponentInstallerBase):
     name = 'gpu'
-    version = '7.0.3'
+    version = '7.1.0'
     installer_only = False
     os_list = [
         {'family': 'rhel', 'version': '7', 'arch': 'x86_64'},
