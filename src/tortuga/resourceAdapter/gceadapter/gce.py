@@ -557,6 +557,9 @@ class Gce(ResourceAdapter): \
             internal_ip,
         )
 
+        self.__set_tortuga_name(session, instance)
+
+
         node.instance = InstanceMapping(
             instance=instance_name,
             resource_adapter_configuration=self.load_resource_adapter_config(
@@ -1270,6 +1273,26 @@ insertnode_request = None
             node.softwareprofile.name,
             internal_ip,
         )
+
+        self.__set_tortuga_name(session, vm_inst)
+
+    def __set_tortuga_name(self, session: dict, vm_inst: dict):
+        connection = session['connection']
+        config = session['config']
+
+        existing_labels = vm_inst.get("labels", {})
+        existing_labels["tortuga-name"] = vm_inst.get("name")
+        instances_set_labels_request_body = {
+                "labelFingerprint" : vm_inst.get("labelFingerprint"),
+                "labels" : existing_labels,
+        }
+
+        connection.svc.instances().setLabels(
+            project=config['project'],
+            instance=vm_inst.get("name"),
+            zone=config['zone'],
+            body=instances_set_labels_request_body,
+        ).execute()
 
     def __get_instance_internal_ip(self, instance: dict) -> Optional[str]: \
             # pylint: disable=no-self-use
