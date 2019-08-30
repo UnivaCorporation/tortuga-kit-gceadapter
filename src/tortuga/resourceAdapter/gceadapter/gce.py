@@ -1056,7 +1056,8 @@ insertnode_request = None
                 session['config']['networks'],
             )
 
-        common_launch_args['preemptible'] = session['config'].get('preemptible', False)
+        common_launch_args['preemptible'] = session['config'].get(
+            'preemptible', False)
         if extra_args:
             if 'preemptible' in extra_args:
                 common_launch_args['preemptible'] = True
