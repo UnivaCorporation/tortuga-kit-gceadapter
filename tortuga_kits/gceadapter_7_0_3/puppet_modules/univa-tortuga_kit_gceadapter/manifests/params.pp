@@ -14,8 +14,8 @@
 
 class tortuga_kit_gceadapter::params {
   $kit_name = 'gceadapter'
-  $major_version = '7.0'
-  $kit_version = '7.0.3'
+  $major_version = '7.1'
+  $kit_version = '7.1.0'
   $kit_iteration = '0'
 
   $kitdescr = "${kit_name}-${kit_version}-${kit_iteration}"

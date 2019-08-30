@@ -24,6 +24,7 @@ import sys
 import time
 import urllib2
 import itertools
+import random
 
 
 ### SETTINGS
@@ -108,6 +109,8 @@ def tryCommand(command, good_return_values=(0,), retry_limit=0,
                time_limit=0, max_sleep_time=15000, sleep_interval=2000):
     total_sleep_time = 0
     returned = -1
+    if time_limit == 0:
+        time_limit = max_sleep_time * retry_limit
     for retries in itertools.count(0):
         returned = subprocess.Popen(command, shell=True).wait()
         if returned in good_return_values or \
