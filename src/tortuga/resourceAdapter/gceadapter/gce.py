@@ -26,8 +26,8 @@ import googleapiclient.discovery
 from gevent.queue import JoinableQueue
 from google.auth import compute_engine
 from google.oauth2 import service_account
-from sqlalchemy.orm.session import Session, sessionmaker
 from sqlalchemy.orm.exc import NoResultFound
+from sqlalchemy.orm.session import Session
 
 from tortuga.addhost.utility import encrypt_insertnode_request
 from tortuga.db.models.hardwareProfile import HardwareProfile
@@ -39,20 +39,15 @@ from tortuga.db.models.softwareProfile import SoftwareProfile
 from tortuga.db.nodesDbHandler import NodesDbHandler
 from tortuga.exceptions.commandFailed import CommandFailed
 from tortuga.exceptions.configurationError import ConfigurationError
+from tortuga.exceptions.invalidArgument import InvalidArgument
 from tortuga.exceptions.nodeNotFound import NodeNotFound
 from tortuga.exceptions.operationFailed import OperationFailed
 from tortuga.exceptions.unsupportedOperation import UnsupportedOperation
-from tortuga.db.hardwareProfilesDbHandler import HardwareProfilesDbHandler
-from tortuga.db.softwareProfilesDbHandler import SoftwareProfilesDbHandler
-from tortuga.web_service.database import dbm
 from tortuga.node import state
 from tortuga.resourceAdapter.resourceAdapter \
     import (DEFAULT_CONFIGURATION_PROFILE_NAME, ResourceAdapter)
-from tortuga.resourceAdapterConfiguration import settings
 from tortuga.utility.cloudinit import get_cloud_init_path
-from tortuga.exceptions.invalidArgument import InvalidArgument
-
-
+from .settings import DEFAULT_SLEEP_TIME, SETTINGS
 
 API_VERSION = 'v1'
 
@@ -82,144 +77,7 @@ class Gce(ResourceAdapter): \
 
     __adaptername__ = 'gce'
 
-    # Time (seconds) between attempts to update instance status to
-    # avoid thrashing
-    DEFAULT_SLEEP_TIME = 5
-
-    settings = {
-        'tags': settings.TagListSetting(
-            display_name='Tags',
-            description='A comma-separated list of tags in the form of '
-                        'key=value'
-        ),
-        'zone': settings.StringSetting(
-            required=True,
-            description='Zone in which compute resources are created'
-        ),
-        'json_keyfile': settings.FileSetting(
-            description='Filename/path of service account credentials file'
-                        'as provided by Google Compute Platform',
-            base_path='/opt/tortuga/config/'
-        ),
-        'type': settings.StringSetting(
-            required=True,
-            description='Virtual machine type; ror example, "n1-standard-1"'
-        ),
-        'network': settings.StringSetting(
-            list=True,
-            required=False,
-            description='Network where virtual machines will be created',
-            mutually_exclusive=['networks'],
-            overrides=['networks'],
-        ),
-        'networks': settings.StringSetting(
-            list=True,
-            required=False,
-            description='Networks associated with virtual machines',
-            mutually_exclusive=['network'],
-            overrides=['network'],
-        ),
-        'project': settings.StringSetting(
-            required=True,
-            description='Name of Google Compute Engine project'
-        ),
-        'image': settings.StringSetting(
-            required=True,
-            description='Name of image used when creating compute nodes',
-            mutually_exclusive=['image_url', 'image_family'],
-            overrides=['image_url', 'image_family'],
-        ),
-        'image_url': settings.StringSetting(
-            required=True,
-            description='URL of image used when creating compute nodes',
-            mutually_exclusive=['image', 'image_family'],
-            overrides=['image', 'image_family'],
-        ),
-        'image_family': settings.StringSetting(
-            required=True,
-            description='Family of image used when creating compute nodes',
-            mutually_exclusive=['image', 'image_url'],
-            overrides=['image', 'image_url'],
-        ),
-        'startup_script_template': settings.FileSetting(
-            required=True,
-            description='Filename of "bootstrap" script used by Tortuga to '
-                        'bootstrap compute nodes',
-            default='startup_script.py',
-            base_path='/opt/tortuga/config/'
-        ),
-        'default_ssh_user': settings.StringSetting(
-            required=True,
-            description='Username of default user on created VMs. "centos" '
-                        'is an appropriate value for CentOS-based VMs.'
-        ),
-        'vcpus': settings.IntegerSetting(
-            description='Number of virtual CPUs for specified virtual '
-                        'machine type'
-        ),
-        'disksize': settings.IntegerSetting(
-            description='Size of boot disk for virtual machine (in GB)',
-            default='10'
-        ),
-        'sleeptime': settings.IntegerSetting(
-            advanced=True,
-            default=str(DEFAULT_SLEEP_TIME)
-        ),
-        'accelerators': settings.StringSetting(
-            description='List of accelerators to include in the instance '
-            'Format: "<accelerator-type>:<accelerator-count>,..."'
-        ),
-        'default_scopes': settings.StringSetting(
-            required=True,
-            list=True,
-            list_separator='\n',
-            default='https://www.googleapis.com/auth/devstorage.full_control\n'
-                    'https://www.googleapis.com/auth/compute',
-        ),
-        'preemptible': settings.BooleanSetting(
-             display='Launch instances as preemptible.'
-         ),
-        'override_dns_domain': settings.BooleanSetting(default='False'),
-        'dns_domain': settings.StringSetting(requires='override_dns_domain'),
-        'dns_options': settings.StringSetting(),
-        'dns_nameservers': settings.StringSetting(
-            default='',
-            list=True,
-            list_separator=' '
-        ),
-        'createtimeout': settings.IntegerSetting(
-            advanced=True,
-            default='600'
-        ),
-        'ssd': settings.BooleanSetting(
-            description='Use SSD backed virtual machines',
-            default='True',
-        ),
-        'randomize_hostname': settings.BooleanSetting(
-            description='Append random string to generated host names'
-            'to prevent name collisions in highly dynamic environments',
-            default='True',
-        ),
-
-        #
-        # Settings for Navops Launch 2.0
-        #
-        'cost_sync_enabled': settings.BooleanSetting(
-            display_name='Cost Synchronization Enabled',
-            group='Cost Sync',
-            group_order=9,
-            description='Enable GCE cost synchronization',
-            requires=['cost_dataset_name']
-        ),
-        'cost_dataset_name': settings.StringSetting(
-            display_name='Dataset Name',
-            group='Cost Sync',
-            group_order=9,
-            requires=['cost_sync_enabled'],
-            description='The name of the GCE BigQuery dataset in which '
-                        'cost data is stored'
-        ),
-    }
+    settings = SETTINGS
 
     def __init__(self, addHostSession: Optional[str] = None):
         super().__init__(addHostSession=addHostSession)
@@ -2111,7 +1969,7 @@ def gceAuthorize_from_json(json_filename: Optional[str] = None) \
 
 
 def _blocking_call(gce_service, project_id, response,
-                   polling_interval=Gce.DEFAULT_SLEEP_TIME):
+                   polling_interval=DEFAULT_SLEEP_TIME):
     status = response['status']
 
     while status != 'DONE' and response:
@@ -2141,7 +1999,7 @@ def _blocking_call(gce_service, project_id, response,
 
 
 def _gevent_blocking_call(gce_service, project_id, response,
-                          polling_interval: int = Gce.DEFAULT_SLEEP_TIME):
+                          polling_interval: int = DEFAULT_SLEEP_TIME):
     """
     polling_interval is seconds
     """
