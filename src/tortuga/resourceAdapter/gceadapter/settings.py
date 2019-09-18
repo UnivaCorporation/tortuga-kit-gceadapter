@@ -5,27 +5,27 @@ from tortuga.resourceAdapterConfiguration import settings
 DEFAULT_SLEEP_TIME = 5
 
 GROUP_INSTANCES = {
-    'group_name': 'Instances',
+    'group': 'Instances',
     'group_order': 0
 }
 GROUP_AUTHENTICATION = {
-    'group_name': 'Authentication',
+    'group': 'Authentication',
     'group_order': 1
 }
 GROUP_DNS = {
-    'group_name': 'DNS',
+    'group': 'DNS',
     'group_order': 2
 }
 GROUP_NETWORKING = {
-    'group_name': 'Networking',
+    'group': 'Networking',
     'group_order': 3
 }
 GROUP_PREEMPTIBLE = {
-    'group_name': 'Preemptible',
+    'group': 'Preemptible',
     'group_order': 4
 }
 GROUP_COST = {
-    'group_name': 'Cost Sync',
+    'group': 'Cost Sync',
     'group_order': 9
 }
 
