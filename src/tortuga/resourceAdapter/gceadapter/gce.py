@@ -109,9 +109,9 @@ class Gce(ResourceAdapter): \
         gce_session = self.get_gce_session(
             addNodesRequest.get('resource_adapter_configuration'))
 
-        gce_session['tags'] = self.get_tags(gce_session['config'],
-                                            dbHardwareProfile.name,
-                                            dbSoftwareProfile.name)
+        gce_session['tags'] = self.get_initial_tags(gce_session['config'],
+                                                    dbHardwareProfile.name,
+                                                    dbSoftwareProfile.name)
 
         if 'nodeDetails' in addNodesRequest and \
             addNodesRequest['nodeDetails']:
@@ -322,9 +322,10 @@ class Gce(ResourceAdapter): \
         return None
 
     def __insert_node(self, session: dict, dbSession: Session,
-                       dbHardwareProfile: HardwareProfile, dbSoftwareProfile: SoftwareProfile,
-                       nodeDetail: Dict[str, Any], resourceAdapter: str
-                       ) -> List[Node]:
+                      dbHardwareProfile: HardwareProfile,
+                      dbSoftwareProfile: SoftwareProfile,
+                      nodeDetail: Dict[str, Any], resourceAdapter: str
+                      ) -> List[Node]:
         """
         Directly insert nodes with pre-existing GCP instances
 
@@ -1450,7 +1451,7 @@ insertnode_request = None
 
         """
         adapter_config = self.get_config(resourceAdapterProfile)
-        tags = self.get_tags(adapter_config, hardwareProfile, softwareProfile)
+        tags = self.get_initial_tags(adapter_config, hardwareProfile, softwareProfile)
 
         session = self.get_gce_session(
             resourceAdapterProfile
@@ -1488,7 +1489,7 @@ insertnode_request = None
             'create_scale_set(): name=[%s]', name)
 
         adapter_config = self.get_config(resourceAdapterProfile)
-        tags = self.get_tags(adapter_config, hardwareProfile, softwareProfile)
+        tags = self.get_initial_tags(adapter_config, hardwareProfile, softwareProfile)
 
         session = self.get_gce_session(
             resourceAdapterProfile
@@ -1931,6 +1932,41 @@ insertnode_request = None
                     )
 
         raise OperationFailed('Error reported by Google Compute Engine')
+
+    def set_remote_tags(self, node: Node, tags: Dict[str, str]):
+        #
+        # Get a configured GCE session
+        #
+        instance_name = get_instance_name_from_host_name(node.name)
+        gce_session = self.__get_gce_session_for_node(node)
+        #
+        # Get the current instance
+        #
+        compute = gce_session['connection'].svc
+        instance_request = compute.instances().get(
+            project=gce_session['config']['project'],
+            zone=gce_session['config']['zone'],
+            instance=instance_name)
+        instance = instance_request.execute()
+        if not instance:
+            raise Exception('GCE Instance not returned for Node: %s',
+                            node.name)
+        #
+        # Set the labels
+        #
+        labels_request = compute.instances().setLabels(
+            project=gce_session['config']['project'],
+            zone=gce_session['config']['zone'],
+            instance=instance_name,
+            body={
+                'labels': tags,
+                'labelFingerprint': instance['labelFingerprint']
+            }
+        )
+        result = labels_request.execute()
+        if result['httpErrorStatusCode']:
+            raise Exception('Error setting GCE labels on %s: %s',
+                            node.name, result['httpErrorMessage'])
 
 
 class GoogleComputeEngine:
