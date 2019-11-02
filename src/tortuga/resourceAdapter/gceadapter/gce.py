@@ -1933,16 +1933,13 @@ insertnode_request = None
 
         raise OperationFailed('Error reported by Google Compute Engine')
 
-    def set_remote_tags(self, node: Node, tags: Dict[str, str]):
-        #
-        # Get a configured GCE session
-        #
+    def set_node_tag(self, node: Node, tag_name: str, tag_value: str):
         instance_name = get_instance_name_from_host_name(node.name)
         gce_session = self.__get_gce_session_for_node(node)
+        compute = gce_session['connection'].svc
         #
         # Get the current instance
         #
-        compute = gce_session['connection'].svc
         instance_request = compute.instances().get(
             project=gce_session['config']['project'],
             zone=gce_session['config']['zone'],
@@ -1952,14 +1949,53 @@ insertnode_request = None
             raise Exception('GCE Instance not returned for Node: %s',
                             node.name)
         #
-        # Set the labels
+        # Set the tag/label
         #
+        if tag_name in instance['labels'] and \
+                instance['labels'][tag_name] == tag_value:
+            return
+        instance['labels'][tag_name] = tag_value
         labels_request = compute.instances().setLabels(
             project=gce_session['config']['project'],
             zone=gce_session['config']['zone'],
             instance=instance_name,
             body={
-                'labels': tags,
+                'labels': instance['labels'],
+                'labelFingerprint': instance['labelFingerprint']
+            }
+        )
+        result = labels_request.execute()
+        if result['httpErrorStatusCode']:
+            raise Exception('Error setting GCE labels on %s: %s',
+                            node.name, result['httpErrorMessage'])
+
+    def unset_node_tag(self, node: Node, tag_name: str):
+        instance_name = get_instance_name_from_host_name(node.name)
+        gce_session = self.__get_gce_session_for_node(node)
+        compute = gce_session['connection'].svc
+        #
+        # Get the current instance
+        #
+        instance_request = compute.instances().get(
+            project=gce_session['config']['project'],
+            zone=gce_session['config']['zone'],
+            instance=instance_name)
+        instance = instance_request.execute()
+        if not instance:
+            raise Exception('GCE Instance not returned for Node: %s',
+                            node.name)
+        #
+        # Remove the tag/label
+        #
+        if tag_name not in instance['labels']:
+            return
+        instance['labels'].pop(tag_name)
+        labels_request = compute.instances().setLabels(
+            project=gce_session['config']['project'],
+            zone=gce_session['config']['zone'],
+            instance=instance_name,
+            body={
+                'labels': instance['labels'],
                 'labelFingerprint': instance['labelFingerprint']
             }
         )
