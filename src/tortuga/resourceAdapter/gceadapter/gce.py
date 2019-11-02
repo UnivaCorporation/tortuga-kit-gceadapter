@@ -1965,9 +1965,9 @@ insertnode_request = None
             }
         )
         result = labels_request.execute()
-        if result['httpErrorStatusCode']:
+        if result.get('errors'):
             raise Exception('Error setting GCE labels on %s: %s',
-                            node.name, result['httpErrorMessage'])
+                            node.name, result['errors'])
 
     def unset_node_tag(self, node: Node, tag_name: str):
         instance_name = get_instance_name_from_host_name(node.name)
@@ -2000,9 +2000,9 @@ insertnode_request = None
             }
         )
         result = labels_request.execute()
-        if result['httpErrorStatusCode']:
+        if result.get('errors'):
             raise Exception('Error setting GCE labels on %s: %s',
-                            node.name, result['httpErrorMessage'])
+                            node.name, result['errors'])
 
 
 class GoogleComputeEngine:
