@@ -1951,7 +1951,7 @@ insertnode_request = None
         #
         # Set the tag/label
         #
-        if tag_name in instance['labels'] and \
+        if tag_name in instance['labels'].keys() and \
                 instance['labels'][tag_name] == tag_value:
             return
         instance['labels'][tag_name] = tag_value
@@ -1987,7 +1987,7 @@ insertnode_request = None
         #
         # Remove the tag/label
         #
-        if tag_name not in instance['labels']:
+        if tag_name not in instance['labels'].keys():
             return
         instance['labels'].pop(tag_name)
         labels_request = compute.instances().setLabels(
