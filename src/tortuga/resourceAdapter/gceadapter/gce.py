@@ -35,6 +35,7 @@ from tortuga.db.models.instanceMapping import InstanceMapping
 from tortuga.db.models.instanceMetadata import InstanceMetadata
 from tortuga.db.models.nic import Nic
 from tortuga.db.models.node import Node
+from tortuga.db.models.nodeTag import NodeTag
 from tortuga.db.models.softwareProfile import SoftwareProfile
 from tortuga.db.nodesDbHandler import NodesDbHandler
 from tortuga.exceptions.commandFailed import CommandFailed
@@ -109,9 +110,9 @@ class Gce(ResourceAdapter): \
         gce_session = self.get_gce_session(
             addNodesRequest.get('resource_adapter_configuration'))
 
-        gce_session['tags'] = self.get_tags(gce_session['config'],
-                                            dbHardwareProfile.name,
-                                            dbSoftwareProfile.name)
+        gce_session['tags'] = self.get_initial_tags(gce_session['config'],
+                                                    dbHardwareProfile.name,
+                                                    dbSoftwareProfile.name)
 
         if 'nodeDetails' in addNodesRequest and \
             addNodesRequest['nodeDetails']:
@@ -322,9 +323,10 @@ class Gce(ResourceAdapter): \
         return None
 
     def __insert_node(self, session: dict, dbSession: Session,
-                       dbHardwareProfile: HardwareProfile, dbSoftwareProfile: SoftwareProfile,
-                       nodeDetail: Dict[str, Any], resourceAdapter: str
-                       ) -> List[Node]:
+                      dbHardwareProfile: HardwareProfile,
+                      dbSoftwareProfile: SoftwareProfile,
+                      nodeDetail: Dict[str, Any], resourceAdapter: str
+                      ) -> List[Node]:
         """
         Directly insert nodes with pre-existing GCP instances
 
@@ -377,6 +379,7 @@ class Gce(ResourceAdapter): \
                         dbSoftwareProfile,
                         metadata={
                             'vcpus': vcpus,
+                            'tags': session.get('tags', {})
                         },
                     ) 
 
@@ -626,21 +629,28 @@ insertnode_request = None
                         metadata: Optional[dict] = None) -> Node: \
             # pylint: disable=no-self-use
         # Initialize Node object for insertion into database
+        if not metadata:
+            metadata = {}
 
-        return Node(
+        node = Node(
             name=name,
             state=state.NODE_STATE_LAUNCHING,
             hardwareprofile=hardwareprofile,
             softwareprofile=softwareprofile,
-            vcpus=metadata.get('vcpus') if metadata else None,
+            vcpus=metadata.get('vcpus'),
             addHostSession=self.addHostSession,
         )
+
+        for k, v in metadata.get('tags', {}).items():
+            node.tags.append(NodeTag(name=k, value=v))
+
+        return node
 
     def __createNodes(self, session: dict, dbSession: Session,
                       dbHardwareProfile: HardwareProfile,
                       dbSoftwareProfile: SoftwareProfile, *,
-                      count: int = 1) -> List[Node]: \
-            # pylint: disable=unused-argument
+                      count: int = 1,
+                      tags: Dict[str, str] = None) -> List[Node]:
         """
         Raises:
             ConfigurationError
@@ -648,6 +658,9 @@ insertnode_request = None
         """
 
         self._logger.debug('__createNodes()')
+
+        if not tags:
+            tags = {}
 
         # use resource adapter 'vcpus' override, otherwise fallback to
         # vm type-based lookup
@@ -666,6 +679,7 @@ insertnode_request = None
                 dbSoftwareProfile,
                 metadata={
                     'vcpus': vcpus,
+                    'tags': tags,
                 },
             ) for _ in range(count)
         ]
@@ -1450,7 +1464,7 @@ insertnode_request = None
 
         """
         adapter_config = self.get_config(resourceAdapterProfile)
-        tags = self.get_tags(adapter_config, hardwareProfile, softwareProfile)
+        tags = self.get_initial_tags(adapter_config, hardwareProfile, softwareProfile)
 
         session = self.get_gce_session(
             resourceAdapterProfile
@@ -1488,7 +1502,8 @@ insertnode_request = None
             'create_scale_set(): name=[%s]', name)
 
         adapter_config = self.get_config(resourceAdapterProfile)
-        tags = self.get_tags(adapter_config, hardwareProfile, softwareProfile)
+        tags = self.get_initial_tags(adapter_config, hardwareProfile,
+                                     softwareProfile)
 
         session = self.get_gce_session(
             resourceAdapterProfile
@@ -1931,6 +1946,77 @@ insertnode_request = None
                     )
 
         raise OperationFailed('Error reported by Google Compute Engine')
+
+    def set_node_tag(self, node: Node, tag_name: str, tag_value: str):
+        instance_name = get_instance_name_from_host_name(node.name)
+        gce_session = self.__get_gce_session_for_node(node)
+        compute = gce_session['connection'].svc
+        #
+        # Get the current instance
+        #
+        instance_request = compute.instances().get(
+            project=gce_session['config']['project'],
+            zone=gce_session['config']['zone'],
+            instance=instance_name)
+        instance = instance_request.execute()
+        if not instance:
+            raise Exception('GCE Instance not returned for Node: %s',
+                            node.name)
+        #
+        # Set the tag/label
+        #
+        if tag_name in instance['labels'].keys() and \
+                instance['labels'][tag_name] == tag_value:
+            return
+        instance['labels'][tag_name] = tag_value
+        labels_request = compute.instances().setLabels(
+            project=gce_session['config']['project'],
+            zone=gce_session['config']['zone'],
+            instance=instance_name,
+            body={
+                'labels': instance['labels'],
+                'labelFingerprint': instance['labelFingerprint']
+            }
+        )
+        result = labels_request.execute()
+        if result.get('errors'):
+            raise Exception('Error setting GCE labels on %s: %s',
+                            node.name, result['errors'])
+
+    def unset_node_tag(self, node: Node, tag_name: str):
+        instance_name = get_instance_name_from_host_name(node.name)
+        gce_session = self.__get_gce_session_for_node(node)
+        compute = gce_session['connection'].svc
+        #
+        # Get the current instance
+        #
+        instance_request = compute.instances().get(
+            project=gce_session['config']['project'],
+            zone=gce_session['config']['zone'],
+            instance=instance_name)
+        instance = instance_request.execute()
+        if not instance:
+            raise Exception('GCE Instance not returned for Node: %s',
+                            node.name)
+        #
+        # Remove the tag/label
+        #
+        if tag_name not in instance['labels'].keys():
+            return
+        instance['labels'].pop(tag_name)
+        labels_request = compute.instances().setLabels(
+            project=gce_session['config']['project'],
+            zone=gce_session['config']['zone'],
+            instance=instance_name,
+            body={
+                'labels': instance['labels'],
+                'labelFingerprint': instance['labelFingerprint']
+            }
+        )
+        result = labels_request.execute()
+        if result.get('errors'):
+            raise Exception('Error setting GCE labels on %s: %s',
+                            node.name, result['errors'])
 
 
 class GoogleComputeEngine:
