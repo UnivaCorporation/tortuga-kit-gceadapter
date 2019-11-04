@@ -172,7 +172,7 @@ SETTINGS = {
     ),
     'dns_domain': settings.StringSetting(
         display_name='DNS Domain',
-        requires='override_dns_domain',
+        requires=['override_dns_domain'],
         **GROUP_DNS
     ),
     'dns_options': settings.StringSetting(
