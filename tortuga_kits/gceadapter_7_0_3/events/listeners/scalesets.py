@@ -115,7 +115,8 @@ class GceScaleSetCreatedListener(GceScaleSetListenerMixin, BaseListener):
         if ssr is None:
             return
 
-        logger.warning('Scale set create request for %s: %s', self._adapter_name, ssr.id)
+        logger.warning('Scale set create request for %s: %s',
+                       self._adapter_name, ssr.id)
 
         # Load the resource adapter for this request
         try:
@@ -124,11 +125,13 @@ class GceScaleSetCreatedListener(GceScaleSetListenerMixin, BaseListener):
             logger.warning('Resource adapter is not installed: %s', ex)
             self._store.delete(ssr.id)
             return
- 
+
         try:
             # Now create the scale set
-            adapter.create_scale_set(name=ssr.id,
-                minCount=ssr.min_nodes, maxCount=ssr.max_nodes,
+            adapter.create_scale_set(
+                name=ssr.id,
+                minCount=ssr.min_nodes,
+                maxCount=ssr.max_nodes,
                 desiredCount=ssr.desired_nodes,
                 resourceAdapterProfile=ssr.resourceadapter_profile_name,
                 hardwareProfile=ssr.hardwareprofile_name,
@@ -139,7 +142,6 @@ class GceScaleSetCreatedListener(GceScaleSetListenerMixin, BaseListener):
             logger.error("Error creating resource request: %s", ex)
             self._store.delete(ssr.id)
             raise
-        
 
 
 class GceScaleSetUpdatedListener(GceScaleSetListenerMixin, BaseListener):
@@ -154,7 +156,8 @@ class GceScaleSetUpdatedListener(GceScaleSetListenerMixin, BaseListener):
         if ssr is None:
             return
 
-        logger.warning('Scale set update request for %s: %s', self._adapter_name, ssr.id)
+        logger.warning('Scale set update request for %s: %s',
+                       self._adapter_name, ssr.id)
 
         # Load the resource adapter for this request
         try:
@@ -165,8 +168,10 @@ class GceScaleSetUpdatedListener(GceScaleSetListenerMixin, BaseListener):
 
         try:
             # Now create the scale set
-            adapter.update_scale_set(name=ssr.id,
-                minCount=ssr.min_nodes, maxCount=ssr.max_nodes,
+            adapter.update_scale_set(
+                name=ssr.id,
+                minCount=ssr.min_nodes,
+                maxCount=ssr.max_nodes,
                 desiredCount=ssr.desired_nodes,
                 resourceAdapterProfile=ssr.resourceadapter_profile_name,
                 hardwareProfile=ssr.hardwareprofile_name,
@@ -176,9 +181,7 @@ class GceScaleSetUpdatedListener(GceScaleSetListenerMixin, BaseListener):
         except Exception as ex:
             logger.error("Error updating resource request: %s", ex)
             old = self.get_previous_scale_set_request(event)
-            self._store.save(old)
-
-
+            self._store.rollback(old)
 
 
 class GceScaleSetDeletedListener(GceScaleSetListenerMixin, BaseListener):
@@ -193,7 +196,8 @@ class GceScaleSetDeletedListener(GceScaleSetListenerMixin, BaseListener):
         if ssr is None:
             return
 
-        logger.warning('Scale set delete request for %s: %s', self._adapter_name, ssr.id)
+        logger.warning('Scale set delete request for %s: %s',
+                       self._adapter_name, ssr.id)
 
         # Load the resource adapter for this request
         try:
@@ -204,10 +208,9 @@ class GceScaleSetDeletedListener(GceScaleSetListenerMixin, BaseListener):
 
         # Now create the scale set
         try:
-            adapter.delete_scale_set(name=ssr.id,
+            adapter.delete_scale_set(
+                name=ssr.id,
                 resourceAdapterProfile=ssr.resourceadapter_profile_name)
         except Exception as ex:
             logger.error("Error deleting resource request: %s", ex)
-            self._store.save(ssr)
-
-
+            self._store.rollback(ssr)
