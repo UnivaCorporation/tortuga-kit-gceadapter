@@ -1444,7 +1444,8 @@ insertnode_request = None
                     instanceTemplate=normalized_name
                 ).execute()
             except Exception as ex:
-                if not str(ex).startswith("Launch configuration name not found"):
+                if not str(ex).startswith(
+                        "Launch configuration name not found"):
                     raise
 
     def update_scale_set(self,
@@ -1464,7 +1465,8 @@ insertnode_request = None
 
         """
         adapter_config = self.get_config(resourceAdapterProfile)
-        tags = self.get_initial_tags(adapter_config, hardwareProfile, softwareProfile)
+        tags = self.get_initial_tags(adapter_config, hardwareProfile,
+                                     softwareProfile)
 
         session = self.get_gce_session(
             resourceAdapterProfile
@@ -1520,7 +1522,8 @@ insertnode_request = None
         }
 
         try:
-            metadata = self.__get_instance_metadata(session, 
+            metadata = self.__get_instance_metadata(
+                session,
                 insertnode_request=encrypt_insertnode_request(
                     self._cm.get_encryption_key(),
                     insertnode_request
@@ -1534,7 +1537,7 @@ insertnode_request = None
 
         common_launch_args = self.__get_common_launch_args(
             session,
-            extra_args=adapter_args.get('extra_args',{})
+            extra_args=adapter_args.get('extra_args', {})
         )
 
         # Just support root disks in scale mode
@@ -1557,14 +1560,17 @@ insertnode_request = None
 
         instanceTemplate = {
             "name": normalized_name,
-            "properties" : instance,
+            "properties": instance,
         }
 
         instanceGroup = {
-            "baseInstanceName": softwareProfile.lower().replace("_","-"),
+            "baseInstanceName": normalized_name,
             "instanceTemplate": "global/instanceTemplates/" + normalized_name,
             "versions": [
-                { "instanceTemplate": "global/instanceTemplates/" + normalized_name }
+                {
+                    "instanceTemplate": "global/instanceTemplates/" +
+                                        normalized_name
+                }
             ],
             "name": normalized_name,
             "targetSize": desiredCount
