@@ -1435,7 +1435,7 @@ insertnode_request = None
                     initial_response,
                     polling_interval=session['config']['sleeptime'])    
         except Exception as ex:
-            if not ex.message.startswith("AutoScalingGroup name not found"):
+            if not str(ex).startswith("AutoScalingGroup name not found"):
                 raise
         finally:
             try:
@@ -1444,7 +1444,7 @@ insertnode_request = None
                     instanceTemplate=normalized_name
                 ).execute()
             except Exception as ex:
-                if not ex.message.startswith("Launch configuration name not found"):
+                if not str(ex).startswith("Launch configuration name not found"):
                     raise
 
     def update_scale_set(self,
