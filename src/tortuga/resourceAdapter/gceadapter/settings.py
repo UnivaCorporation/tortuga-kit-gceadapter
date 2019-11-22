@@ -141,24 +141,30 @@ SETTINGS = {
         default='True',
         **GROUP_INSTANCES
     ),
+    'service_account_email': settings.StringSetting(
+        display_name='Service Account Email',
+        description='Email address of the service account to be '
+                    'attached to instances',
+        **GROUP_INSTANCES
+    ),
+    'service_account_scopes': settings.StringSetting(
+        display_name='Service Account Scopes',
+        description='List of scopes to associate with the attached service '
+                    'account',
+        requires=['service_account_email'],
+        list=True,
+        list_separator='\n',
+        **GROUP_INSTANCES
+    ),
 
     #
     # Authentication
     #
     'json_keyfile': settings.FileSetting(
         display_name='JSON Key File',
-        description='Filename/path of service account credentials file'
+        description='Filename/path of service account credentials file '
                     'as provided by Google Compute Platform',
         base_path='/opt/tortuga/config/',
-        **GROUP_AUTHENTICATION
-    ),
-    'default_scopes': settings.StringSetting(
-        display_name='Default Scopes',
-        required=True,
-        list=True,
-        list_separator='\n',
-        default='https://www.googleapis.com/auth/devstorage.full_control\n'
-                'https://www.googleapis.com/auth/compute',
         **GROUP_AUTHENTICATION
     ),
 
