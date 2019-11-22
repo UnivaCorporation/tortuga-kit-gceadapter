@@ -153,7 +153,6 @@ SETTINGS = {
                     'account',
         requires=['service_account_email'],
         list=True,
-        list_separator='\n',
         **GROUP_INSTANCES
     ),
 
