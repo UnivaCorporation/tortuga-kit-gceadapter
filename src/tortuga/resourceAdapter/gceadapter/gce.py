@@ -381,7 +381,7 @@ class Gce(ResourceAdapter): \
                             'vcpus': vcpus,
                             'tags': session.get('tags', {})
                         },
-                    ) 
+                    )
 
                 node_created = True
                 node.state = state.NODE_STATE_PROVISIONED
@@ -475,30 +475,12 @@ class Gce(ResourceAdapter): \
             zone=zone,
         ).execute()
 
-    def __validate_default_scopes(self, default_scopes: List[str]) -> None:
-        """
-        Raises:
-            ConfigurationError
-        """
-
-        # Iterate over specified 'default_scopes' and ensure they are
-        # properly formatted URLs.
-        for url in default_scopes:
-            urlResult = urllib.parse.urlparse(url)
-
-            if not urlResult.scheme.lower() in ['http', 'https']:
-                self._logger.error(
-                    'Invalid URL specified in default_scopes:'
-                    ' \"%s\" must be a properly formatted URL', url)
-
-                raise ConfigurationError(
-                    'Invalid URL [%s] specified in default_scopes' % (url))
-
     def process_config(self, config: Dict[str, Any]) -> None:
         #
-        # Sanity check default scopes
+        # Sanity check scopes
         #
-        self.__validate_default_scopes(config['default_scopes'])
+        if config.get('service_account_scopes', []):
+            self._validate_scopes(config['service_account_scopes'])
 
         #
         # DNS settings
@@ -532,6 +514,16 @@ class Gce(ResourceAdapter): \
 
         # convert networks definition into list of tuples
         config['networks'] = self.__parse_network_adapter_config(network_defs)
+
+    def _validate_scopes(self, scopes: List[str]) -> None:
+        for url in scopes:
+            url_result = urllib.parse.urlparse(url)
+            if not url_result.scheme.lower() in ['http', 'https']:
+                self._logger.error(
+                    'Invalid URL specified in scope: %s', url)
+                raise ConfigurationError(
+                    'Invalid URL specified in scope: %s' % url)
+
 
     def __parse_network_adapter_config(self, network_defs: List[str]) \
             -> List[Tuple[str, Optional[str], Optional[str]]]:
@@ -1341,7 +1333,7 @@ insertnode_request = None
             project_url, config['zone'], config['type'])
 
         instance = {
-            # Name is filled in by the caller.
+            # Name is provided by the caller
             # 'name': instance_name,
             'machineType': machine_type_url,
             'labels': session['tags'],
@@ -1364,6 +1356,17 @@ insertnode_request = None
             ],
             'networkInterfaces': common_launch_args['network_interfaces'],
         }
+
+        #
+        # Attach a service account if required
+        #
+        if config.get('service_account_email', None):
+            instance['serviceAccounts'] = [
+                {
+                    'email': config['service_account_email'],
+                    'scopes': config.get('service_account_scopes', [])
+                }
+            ]
 
         # only add 'preemptible' flag if enabled
         if common_launch_args.get('preemptible', False):
@@ -1433,7 +1436,7 @@ insertnode_request = None
                     session['connection'].svc,
                     session['config']['project'],
                     initial_response,
-                    polling_interval=session['config']['sleeptime'])    
+                    polling_interval=session['config']['sleeptime'])
         except Exception as ex:
             if not str(ex).startswith("AutoScalingGroup name not found"):
                 raise
@@ -1554,7 +1557,7 @@ insertnode_request = None
         instance["machineType"] = config['type']
         for disk in instance["disks"]:
             disk["initializeParams"]["diskType"] = \
-                os.path.basename(disk["initializeParams"]["diskType"])    
+                os.path.basename(disk["initializeParams"]["diskType"])
 
         normalized_name = "scale-set-" + name
 
