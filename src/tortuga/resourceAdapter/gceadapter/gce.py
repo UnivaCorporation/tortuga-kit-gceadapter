@@ -47,6 +47,7 @@ from tortuga.exceptions.unsupportedOperation import UnsupportedOperation
 from tortuga.node import state
 from tortuga.resourceAdapter.resourceAdapter \
     import (DEFAULT_CONFIGURATION_PROFILE_NAME, ResourceAdapter)
+from tortuga.resourceAdapter.utility import patch_managed_tags
 from tortuga.utility.cloudinit import get_cloud_init_path
 from .settings import DEFAULT_SLEEP_TIME, SETTINGS
 
@@ -1336,7 +1337,7 @@ insertnode_request = None
             # Name is provided by the caller
             # 'name': instance_name,
             'machineType': machine_type_url,
-            'labels': session['tags'],
+            'labels': patch_managed_tags(session.get('tags', {})),
             'disks': [
                 {
                     'type': 'PERSISTENT',
@@ -1513,7 +1514,7 @@ insertnode_request = None
         session = self.get_gce_session(
             resourceAdapterProfile
         )
-        session['tags'] = tags
+        session['tags'] = patch_managed_tags(tags)
 
         connection = session['connection']
 
