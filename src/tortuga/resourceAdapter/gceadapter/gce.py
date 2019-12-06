@@ -1521,8 +1521,9 @@ insertnode_request = None
         config = session['config']
 
         insertnode_request = {
-                   'softwareProfile': softwareProfile,
-                   'hardwareProfile': hardwareProfile,
+            'softwareProfile': softwareProfile,
+            'hardwareProfile': hardwareProfile,
+            'resource_adapter_configuration': resourceAdapterProfile,
         }
 
         try:
