@@ -277,8 +277,8 @@ class ResourceAdapterSetup(TortugaCli):
         return network
 
     def _get_image_url(self):
-        cmd = ['compute', 'images', 'list', '--filter=name~"centos-7.*"',
-               '--uri']
+        cmd = ['compute', 'images', 'list', '--project=centos-cloud',
+               '--filter=family:centos-7', '--uri']
         url = self._run_gcloud(cmd)
         print(self.format('Image: {}', url))
 
