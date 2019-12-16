@@ -17,6 +17,7 @@ import os.path
 import random
 import subprocess
 import time
+import traceback
 import urllib.parse
 from typing import Any, Dict, List, NoReturn, Optional, Tuple
 
@@ -1016,6 +1017,7 @@ insertnode_request = None
                     )
 
                     # instance post-launch action raised an exception
+                    self._logger.error(traceback.format_exc())
                     self._logger.error(msg)
 
                     self.__mark_node_request_failed(
