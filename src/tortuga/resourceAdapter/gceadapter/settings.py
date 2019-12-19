@@ -246,11 +246,8 @@ SETTINGS = {
     'sleeptime': settings.IntegerSetting(
         display_name="Sleep Time",
         advanced=True,
+        description='Time to sleep (in milliseconds) between polling '
+                    'intervals',
         default=str(DEFAULT_SLEEP_TIME)
-    ),
-    'createtimeout': settings.IntegerSetting(
-        display_name="Create Timeout",
-        advanced=True,
-        default='600'
     ),
 }
