@@ -928,10 +928,6 @@ insertnode_request = None
             if 'preemptible' in extra_args:
                 common_launch_args['preemptible'] = True
 
-        if 'accelerators' in session['config']:
-            common_launch_args['accelerators'] = \
-                    _parse_accelerator(session['config']['accelerators'])
-
         return common_launch_args
 
     def __process_added_disk_changes(self, session: dict,
@@ -1377,19 +1373,6 @@ insertnode_request = None
                 'preemptible': common_launch_args['preemptible']
             }
 
-        if common_launch_args.get('accelerators', False):
-            guest_accelerators = []
-            for accelerator in common_launch_args['accelerators']:
-                full_type = "/projects/%s/zones/%s/acceleratorTypes/%s" % \
-                        (config['project'], config["zone"], accelerator["acceleratorType"])
-                full_accelerator = {"acceleratorType": full_type,
-                        "acceleratorCount": accelerator["acceleratorCount"]}
-                guest_accelerators.append(full_accelerator)
-            instance['guestAccelerators'] = guest_accelerators
-            # Also need to disable migration and restart policy for GPU nodes
-            scheduling = instance.get('scheduling',{})
-            scheduling["onHostMaintenance"] = "TERMINATE"
-            instance['scheduling'] = scheduling
         # Add any persistent (data) disks to the instance; ignore the first
         # disk in the disk because it's automatically created when the
         # instance is launched.
@@ -2274,14 +2257,3 @@ def format_node_list(nodes: List[Node]) -> str:
         return '{}..{}'.format(nodes[0].name, nodes[-1].name)
 
     return ' '.join([node.name for node in nodes])
-
-
-def _parse_accelerator(accelerator_string: str) -> List[dict]:
-    accel = []
-    for s in accelerator_string.split(","):
-        parts = s.strip().split(":")
-        if len(parts) != 2:
-            raise ConfigurationError("Invalid Accelerator Configuration")
-        accelerator, count = parts
-        accel.append({"acceleratorType":accelerator, "acceleratorCount": int(count)})
-    return accel

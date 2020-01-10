@@ -121,12 +121,6 @@ SETTINGS = {
         default='10',
         **GROUP_INSTANCES
     ),
-    'accelerators': settings.StringSetting(
-        display_name='Accelerators',
-        description='List of accelerators to include in the instance '
-                    'Format: "<accelerator-type>:<accelerator-count>,..."',
-        **GROUP_INSTANCES
-    ),
     'ssd': settings.BooleanSetting(
         display_name='SSD',
         description='Use SSD backed virtual machines',
