@@ -2031,6 +2031,62 @@ insertnode_request = None
             raise Exception('Error setting GCE labels on %s: %s',
                             node.name, result['errors'])
 
+    def cloudserveraction_stop(self, cloudconnectorprofile_id: str,
+                               cloudserver_id: str, **kwargs):
+        cfg = self.get_config(cloudconnectorprofile_id)
+        session = gceAuthorize_from_json(cfg.get('json_keyfile'))
+        project, zone, instance_name = \
+            self._get_instance_name_from_cloudserver_id(cloudserver_id)
+        response = session.svc.instances().stop(
+            project=project, zone=zone, instance=instance_name).execute()
+        _blocking_call(session, project, response)
+
+    def cloudserveraction_start(self, cloudconnectorprofile_id: str,
+                                cloudserver_id: str, **kwargs):
+        cfg = self.get_config(cloudconnectorprofile_id)
+        session = gceAuthorize_from_json(cfg.get('json_keyfile'))
+        project, zone, instance_name = \
+            self._get_instance_name_from_cloudserver_id(cloudserver_id)
+        response = session.svc.instances().start(
+            project=project, zone=zone, instance=instance_name).execute()
+        _blocking_call(session, project, response)
+
+    def cloudserveraction_restart(self, cloudconnectorprofile_id: str,
+                                  cloudserver_id: str, **kwargs):
+        cfg = self.get_config(cloudconnectorprofile_id)
+        session = gceAuthorize_from_json(cfg.get('json_keyfile'))
+        project, zone, instance_name = \
+            self._get_instance_name_from_cloudserver_id(cloudserver_id)
+        response = session.svc.instances().reset(
+            project=project, zone=zone, instance=instance_name).execute()
+        _blocking_call(session, project, response)
+
+    def cloudserveraction_delete(self, cloudconnectorprofile_id: str,
+                                 cloudserver_id: str, **kwargs):
+        cfg = self.get_config(cloudconnectorprofile_id)
+        session = gceAuthorize_from_json(cfg.get('json_keyfile'))
+        project, zone, instance_name = \
+            self._get_instance_name_from_cloudserver_id(cloudserver_id)
+        response = session.svc.instances().delete(
+            project=project, zone=zone, instance=instance_name).execute()
+        _blocking_call(session, project, response)
+
+    def _get_instance_name_from_cloudserver_id(
+            self, cloudserver_id) -> Tuple[str, str, str]:
+        #
+        # Cloud server IDs for Azure are in the following form
+        # gcp:<project-name>:<zone-name>:<instance-name>
+        #
+        id_parts = cloudserver_id.split(':')
+        if len(id_parts) != 4:
+            raise Exception("Invalid cloud server id")
+        #
+        # We will allow both gcp and gce here, as we kinda use both
+        #
+        if id_parts[0].lower() not in [self.__adaptername__.lower(), "gcp"]:
+            raise Exception("Resource adapter mismatch")
+        return id_parts[1], id_parts[2], id_parts[3]
+
 
 class GoogleComputeEngine:
     def __init__(self, svc=None):
