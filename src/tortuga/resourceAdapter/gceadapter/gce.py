@@ -487,11 +487,12 @@ class Gce(ResourceAdapter): \
         #
         # DNS settings
         #
-        config['dns_domain'] = config['dns_domain'] \
-            if 'dns_domain' in config else self.private_dns_zone
+        if config.get('override_dns_domain', None):
+            if not config.get('dns_domain', None):
+                config['dns_domain'] = self.private_dns_zone
 
-        if not config['dns_nameservers']:
-            config['dns_nameservers'].append(self.installer_public_ipaddress)
+            if not config['dns_nameservers']:
+                config['dns_nameservers'].append(self.installer_public_ipaddress)
 
         # extract 'region' from 'zone'; partially validate zone as side-effect
         try:
@@ -569,6 +570,10 @@ class Gce(ResourceAdapter): \
 
         installerIp = self.installer_public_ipaddress
 
+        # Set up DNS domain value, if it exists
+        dns_domain_value = quoted_val(str(configDict['dns_domain'])) \
+            if configDict.get('dns_domain') else None
+
         config = {
             'installerHostName': self.installer_public_hostname,
             'installerIp': installerIp,
@@ -577,7 +582,7 @@ class Gce(ResourceAdapter): \
             'cfmuser': self._cm.getCfmUser(),
             'cfmpassword': self._cm.getCfmPassword(),
             'override_dns_domain': str(configDict['override_dns_domain']),
-            'dns_domain': quoted_val(str(configDict['dns_domain'])),
+            'dns_domain': dns_domain_value,
             'dns_options': quoted_val(configDict['dns_options'])
             if configDict.get('dns_options') else None,
             'dns_nameservers': _get_encoded_list(
@@ -689,7 +694,7 @@ insertnode_request = None
         node_name = hostname
 
         if session['config']['override_dns_domain']:
-            if session['config']['dns_domain'] == self.private_dns_zone:
+            if session['config'].get('dns_domain') == self.private_dns_zone:
                 node_name = fqdn
 
             else:
