@@ -2039,7 +2039,7 @@ insertnode_request = None
             self._get_instance_name_from_cloudserver_id(cloudserver_id)
         response = session.svc.instances().stop(
             project=project, zone=zone, instance=instance_name).execute()
-        _blocking_call(session, project, response)
+        _blocking_call(session.svc, project, response)
 
     def cloudserveraction_start(self, cloudconnectorprofile_id: str,
                                 cloudserver_id: str, **kwargs):
@@ -2049,7 +2049,7 @@ insertnode_request = None
             self._get_instance_name_from_cloudserver_id(cloudserver_id)
         response = session.svc.instances().start(
             project=project, zone=zone, instance=instance_name).execute()
-        _blocking_call(session, project, response)
+        _blocking_call(session.svc, project, response)
 
     def cloudserveraction_restart(self, cloudconnectorprofile_id: str,
                                   cloudserver_id: str, **kwargs):
@@ -2059,7 +2059,7 @@ insertnode_request = None
             self._get_instance_name_from_cloudserver_id(cloudserver_id)
         response = session.svc.instances().reset(
             project=project, zone=zone, instance=instance_name).execute()
-        _blocking_call(session, project, response)
+        _blocking_call(session.svc, project, response)
 
     def cloudserveraction_delete(self, cloudconnectorprofile_id: str,
                                  cloudserver_id: str, **kwargs):
@@ -2069,7 +2069,7 @@ insertnode_request = None
             self._get_instance_name_from_cloudserver_id(cloudserver_id)
         response = session.svc.instances().delete(
             project=project, zone=zone, instance=instance_name).execute()
-        _blocking_call(session, project, response)
+        _blocking_call(session.svc, project, response)
 
     def _get_instance_name_from_cloudserver_id(
             self, cloudserver_id) -> Tuple[str, str, str]:
