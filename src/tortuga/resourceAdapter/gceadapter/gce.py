@@ -550,13 +550,20 @@ class Gce(ResourceAdapter): \
             'connection': gceAuthorize_from_json(config.get('json_keyfile')),
         }
 
-    def __getStartupScript(self, configDict: dict, insertnode_request: Optional[bytes] = None) -> Optional[str]:
+    def generate_startup_script(self, configDict: dict,
+                                insertnode_request: Optional[bytes] = None) \
+            -> Optional[str]:
         """
         Build a node/instance-specific startup script that will initialize
-        VPN, install Puppet, and the bootstrap the instance.
-        """
+        VPN, install Puppet, and bootstrap the instance.
 
-        self._logger.debug('__getStartupScript()')
+        :param configDict: resource adapter configuration settings
+        :param insertnode_request: encrypted insertnode_request, optional
+
+        :return: full startup script as a `str`, or `None` if template
+                 not found
+        """
+        self._logger.debug('generate_startup_script()')
 
         if not os.path.exists(configDict['startup_script_template']):
             self._logger.warning(
@@ -752,7 +759,10 @@ insertnode_request = None
 
         # Default to using startup-script
         if 'startup_script_template' in session['config']:
-            startup_script = self.__getStartupScript(session['config'], insertnode_request)
+            startup_script = self.generate_startup_script(
+                session['config'],
+                insertnode_request=insertnode_request
+            )
 
             if startup_script:
                 metadata.append(('startup-script', startup_script))
