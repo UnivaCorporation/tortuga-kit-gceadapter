@@ -533,7 +533,8 @@ class Gce(ResourceAdapter): \
         return [split_three_item_value(network) for network in network_defs]
 
     def get_gce_session(self,
-                        profile: str = DEFAULT_CONFIGURATION_PROFILE_NAME
+                        profile: str = DEFAULT_CONFIGURATION_PROFILE_NAME,
+                        config: dict = {}
                         ) -> dict:
         """
         Initialize GCE session
@@ -542,7 +543,8 @@ class Gce(ResourceAdapter): \
         :raises ResourceNotFound:
 
         """
-        config = self.get_config(profile)
+        if not config:
+            config = self.get_config(profile)
 
         return {
             'config': config,
@@ -1505,37 +1507,33 @@ insertnode_request = None
             instanceGroupManager=normalized_name,
             size=desiredCount).execute()
 
-    def create_scale_set(self,
+    def create_instance_template(self,
               name: str,
               resourceAdapterProfile: str,
               hardwareProfile: str,
               softwareProfile: str,
-              minCount: int,
-              maxCount: int,
-              desiredCount: int,
-              adapter_args: dict):
-
+              adapter_args: dict,
+              adapter_config: dict={}):
         """
-        Create a scale set in GCE
+        Create an instance template in GCE
 
         :raises InvalidArgument:
-
         """
-        self._logger.debug(
-            'create_scale_set(): name=[%s]', name)
+        self._logger.debug('create_instance_template(): name=[%s]', name)
 
-        adapter_config = self.get_config(resourceAdapterProfile)
-        tags = self.get_initial_tags(adapter_config, hardwareProfile,
-                                     softwareProfile)
-
+        # Set up GCE session
         session = self.get_gce_session(
-            resourceAdapterProfile
+            resourceAdapterProfile,
+            config=adapter_config
         )
+
+        # Get tags
+        tags = self.get_initial_tags(session['config'], hardwareProfile,
+                                     softwareProfile)
         session['tags'] = patch_managed_tags(tags)
 
+        # Set up connection
         connection = session['connection']
-
-        config = session['config']
 
         insertnode_request = {
             'softwareProfile': softwareProfile,
@@ -1573,34 +1571,19 @@ insertnode_request = None
                           persistent_disks=persistent_disks)
 
         # Override a few fields to meet instanceTemplates API
-        instance["machineType"] = config['type']
+        instance["machineType"] = session['config']['type']
         for disk in instance["disks"]:
             disk["initializeParams"]["diskType"] = \
                 os.path.basename(disk["initializeParams"]["diskType"])
 
-        normalized_name = "scale-set-" + name
-
         instanceTemplate = {
-            "name": normalized_name,
+            "name": name,
             "properties": instance,
-        }
-
-        instanceGroup = {
-            "baseInstanceName": normalized_name,
-            "instanceTemplate": "global/instanceTemplates/" + normalized_name,
-            "versions": [
-                {
-                    "instanceTemplate": "global/instanceTemplates/" +
-                                        normalized_name
-                }
-            ],
-            "name": normalized_name,
-            "targetSize": desiredCount
         }
 
         try:
             initial_response = connection.svc.instanceTemplates().insert(
-                project=config['project'],
+                project=session['config']['project'],
                 body=instanceTemplate
             ).execute()
             result = _blocking_call(
@@ -1608,16 +1591,93 @@ insertnode_request = None
                     session['config']['project'],
                     initial_response,
                     polling_interval=session['config']['sleeptime'])
+        except Exception as ex:
+            connection.svc.instanceTemplates().delete(
+                project=session['config']['project'],
+                instanceTemplate=name
+            ).execute()
+            raise ex
+
+        return instanceTemplate
+
+    def create_scale_set(self,
+              name: str,
+              resourceAdapterProfile: str,
+              hardwareProfile: str,
+              softwareProfile: str,
+              minCount: int,
+              maxCount: int,
+              desiredCount: int,
+              adapter_args: dict,
+              instance_template: dict={}):
+        """
+        Create a scale set in GCE
+
+        If instance_template is not provided, we create an instance template
+        specifically for this scale set.
+
+        :raises InvalidArgument:
+        """
+        self._logger.debug(
+            'create_scale_set(): name=[%s]', name)
+
+        # Set up GCE session
+        session = self.get_gce_session(resourceAdapterProfile)
+        config = session['config']
+
+        # If no instance template is provided, create one specifically for this
+        # scale set.
+        template_created = False
+        if instance_template:
+            # TODO: confirm that provided instance template exists
+            pass
+        else:
+            # Add the 'scale-set-' prefix to the name
+            name = f'scale-set-{name}'
+            instance_template = self.create_instance_template(
+                name,
+                resourceAdapterProfile,
+                hardwareProfile,
+                softwareProfile,
+                adapter_args
+            )
+            template_created = True
+
+        # Get session and connection
+        session = self.get_gce_session(
+            resourceAdapterProfile
+        )
+        connection = session['connection']
+
+        # Set up instance group dict
+        instanceGroup = {
+            "baseInstanceName": name,
+            "instanceTemplate": "global/instanceTemplates/" + \
+                                instance_template['name'],
+            "versions": [
+                {
+                    "instanceTemplate": "global/instanceTemplates/" + \
+                                        instance_template['name']
+                }
+            ],
+            "name": name,
+            "targetSize": desiredCount
+        }
+
+        try:
             connection.svc.instanceGroupManagers().insert(
                 project=config['project'],
                 body=instanceGroup,
                 zone=config['zone']
             ).execute()
         except Exception as ex:
-            connection.svc.instanceTemplates().delete(
-                project=config['project'],
-                instanceTemplate=normalized_name
-            ).execute()
+            # Cleanup - if we created an instance template specifically for
+            # this scale set, then delete it
+            if template_created:
+                connection.svc.instanceTemplates().delete(
+                    project=config['project'],
+                    instanceTemplate=instance_template['name']
+                ).execute()
             raise ex
 
     def __launch_instance(self, session: dict, instance_name: str,
