@@ -1513,7 +1513,7 @@ insertnode_request = None
               hardwareProfile: str,
               softwareProfile: str,
               adapter_args: dict,
-              adapter_config: dict={}):
+              adapter_config: dict={}) -> Dict[str, Any]:
         """
         Create an instance template in GCE
 
@@ -1609,7 +1609,7 @@ insertnode_request = None
               maxCount: int,
               desiredCount: int,
               adapter_args: dict,
-              instance_template: dict={}):
+              instance_template_name: str=None):
         """
         Create a scale set in GCE
 
@@ -1628,7 +1628,7 @@ insertnode_request = None
         # If no instance template is provided, create one specifically for this
         # scale set.
         template_created = False
-        if instance_template:
+        if instance_template_name:
             # TODO: confirm that provided instance template exists
             pass
         else:
@@ -1642,6 +1642,7 @@ insertnode_request = None
                 adapter_args
             )
             template_created = True
+            instance_template_name = instance_template['name']
 
         # Get session and connection
         session = self.get_gce_session(
@@ -1653,11 +1654,11 @@ insertnode_request = None
         instanceGroup = {
             "baseInstanceName": name,
             "instanceTemplate": "global/instanceTemplates/" + \
-                                instance_template['name'],
+                                instance_template_name,
             "versions": [
                 {
                     "instanceTemplate": "global/instanceTemplates/" + \
-                                        instance_template['name']
+                                        instance_template_name
                 }
             ],
             "name": name,
@@ -1671,12 +1672,12 @@ insertnode_request = None
                 zone=config['zone']
             ).execute()
         except Exception as ex:
-            # Cleanup - if we created an instance template specifically for
-            # this scale set, then delete it
+            # Cleanup on failure - if we created an instance template
+            # specifically for this scale set, then delete it
             if template_created:
                 connection.svc.instanceTemplates().delete(
                     project=config['project'],
-                    instanceTemplate=instance_template['name']
+                    instanceTemplate=instance_template_name
                 ).execute()
             raise ex
 
