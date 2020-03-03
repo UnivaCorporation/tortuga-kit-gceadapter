@@ -42,7 +42,7 @@ class GceScaleSetListenerMixin:
         self._store: ResourceRequestStore = ResourceRequestStoreManager.get()
         Session = sessionmaker(bind=dbm.engine)
         self.session = Session()
-        self._adapter_name = 'gce'
+        self._adapter_name = 'GCP'
 
     def get_resource_adapter(self) -> ResourceAdapter:
         adapter = get_api(self._adapter_name)

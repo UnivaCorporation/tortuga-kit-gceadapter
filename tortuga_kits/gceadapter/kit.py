@@ -27,7 +27,7 @@ class GceInstaller(ResourceAdapterMixin, KitInstallerBase):
         'startup_script.py',
         'startup_script_bare.py',
     ]
-    resource_adapter_name = 'gce'
+    resource_adapter_name = 'GCP'
 
     def  action_post_install(self, *args, **kwargs):
         # Copy the custom facter fact to the appropriate place

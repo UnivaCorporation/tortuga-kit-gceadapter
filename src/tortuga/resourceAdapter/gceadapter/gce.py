@@ -78,7 +78,7 @@ def get_disk_volume_name(instance_name, diskNumber):
 class Gce(ResourceAdapter): \
         # pylint: disable=too-many-public-methods
 
-    __adaptername__ = 'gce'
+    __adaptername__ = 'GCP'
 
     settings = SETTINGS
 
@@ -873,7 +873,7 @@ insertnode_request = None
                 # store metadata indicating vm was launched as preemptible
                 instance_metadata.append(
                     InstanceMetadata(
-                        key='gce:scheduling',
+                        key='gcp:scheduling',
                         value='preemptible'
                     )
                 )
