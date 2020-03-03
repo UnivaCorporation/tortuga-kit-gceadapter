@@ -25,4 +25,4 @@ class GceInstaller(ResourceAdapterMixin, KitInstallerBase):
         'startup_script.py',
         'startup_script_bare.py',
     ]
-    resource_adapter_name = 'gce'
+    resource_adapter_name = 'GCP'

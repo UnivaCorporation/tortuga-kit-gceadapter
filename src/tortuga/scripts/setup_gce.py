@@ -30,7 +30,7 @@ from tortuga.resourceAdapterConfiguration.api import \
 
 
 class ResourceAdapterSetup(TortugaCli):
-    adapter_type = 'gce'
+    adapter_type = 'GCP'
     verbose = False
 
     METADATA_URL = 'http://metadata.google.internal/computeMetadata/v1/'
