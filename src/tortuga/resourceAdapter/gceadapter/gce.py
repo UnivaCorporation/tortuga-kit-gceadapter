@@ -1428,8 +1428,8 @@ insertnode_request = None
 
     def delete_scale_set(self,
               name: str,
-              resourceAdapterProfile: str):
-
+              resourceAdapterProfile: str,
+              adapter_args: dict={}):
         """
         Delete an existing scale set
 
@@ -1438,12 +1438,9 @@ insertnode_request = None
         session = self.get_gce_session(
             resourceAdapterProfile
         )
-
         connection = session['connection']
-
         config = session['config']
-
-        normalized_name = "scale-set-" + name
+        normalized_name = f"scale-set-{name}"
 
         try:
             initial_response = connection.svc.instanceGroupManagers().delete(
@@ -1462,6 +1459,9 @@ insertnode_request = None
                 raise
         finally:
             try:
+                # If the instance template was created specifically for this
+                # scale set (i.e., its name is 'scale-set-{instancegroupname}')
+                # then delete it
                 connection.svc.instanceTemplates().delete(
                     project=config['project'],
                     instanceTemplate=normalized_name
@@ -1474,12 +1474,8 @@ insertnode_request = None
     def update_scale_set(self,
               name: str,
               resourceAdapterProfile: str,
-              hardwareProfile: str,
-              softwareProfile: str,
-              minCount: int,
-              maxCount: int,
               desiredCount: int,
-              adapter_args: dict):
+              adapter_args: dict={}):
 
         """
         Updates an existing scale set
@@ -1487,20 +1483,13 @@ insertnode_request = None
         :raises InvalidArgument:
 
         """
-        adapter_config = self.get_config(resourceAdapterProfile)
-        tags = self.get_initial_tags(adapter_config, hardwareProfile,
-                                     softwareProfile)
-
+        normalized_name = f'scale-set-{name}'
         session = self.get_gce_session(
             resourceAdapterProfile
         )
-        session['tags'] = tags
-
         connection = session['connection']
-
         config = session['config']
 
-        normalized_name = "scale-set-" + name
         connection.svc.instanceGroupManagers().resize(
             project=config['project'],
             zone=config['zone'],
@@ -1513,7 +1502,7 @@ insertnode_request = None
               hardwareProfile: str,
               softwareProfile: str,
               adapter_args: dict,
-              adapter_config: dict={}):
+              adapter_config: dict={}) -> Dict[str, Any]:
         """
         Create an instance template in GCE
 
@@ -1603,37 +1592,38 @@ insertnode_request = None
     def create_scale_set(self,
               name: str,
               resourceAdapterProfile: str,
-              hardwareProfile: str,
-              softwareProfile: str,
-              minCount: int,
-              maxCount: int,
               desiredCount: int,
-              adapter_args: dict,
-              instance_template: dict={}):
+              hardwareProfile: str=None,
+              softwareProfile: str=None,
+              instance_template_name: str=None,
+              adapter_args: dict={}):
         """
         Create a scale set in GCE
 
-        If instance_template is not provided, we create an instance template
-        specifically for this scale set.
+        If instance_template_name is not provided, we create an instance
+        template specifically for this scale set.
 
         :raises InvalidArgument:
         """
         self._logger.debug(
             'create_scale_set(): name=[%s]', name)
 
+        # Add the 'scale-set-' prefix to the name - this is kind of an
+        # implicit indicator that the scale set is managed by Tortuga
+        name = f'scale-set-{name}'
+
         # Set up GCE session
         session = self.get_gce_session(resourceAdapterProfile)
         config = session['config']
+        connection = session['connection']
 
         # If no instance template is provided, create one specifically for this
         # scale set.
         template_created = False
-        if instance_template:
+        if instance_template_name:
             # TODO: confirm that provided instance template exists
             pass
         else:
-            # Add the 'scale-set-' prefix to the name
-            name = f'scale-set-{name}'
             instance_template = self.create_instance_template(
                 name,
                 resourceAdapterProfile,
@@ -1642,22 +1632,17 @@ insertnode_request = None
                 adapter_args
             )
             template_created = True
-
-        # Get session and connection
-        session = self.get_gce_session(
-            resourceAdapterProfile
-        )
-        connection = session['connection']
+            instance_template_name = instance_template['name']
 
         # Set up instance group dict
         instanceGroup = {
             "baseInstanceName": name,
             "instanceTemplate": "global/instanceTemplates/" + \
-                                instance_template['name'],
+                                instance_template_name,
             "versions": [
                 {
                     "instanceTemplate": "global/instanceTemplates/" + \
-                                        instance_template['name']
+                                        instance_template_name
                 }
             ],
             "name": name,
@@ -1671,12 +1656,12 @@ insertnode_request = None
                 zone=config['zone']
             ).execute()
         except Exception as ex:
-            # Cleanup - if we created an instance template specifically for
-            # this scale set, then delete it
+            # Cleanup on failure - if we created an instance template
+            # specifically for this scale set, then delete it
             if template_created:
                 connection.svc.instanceTemplates().delete(
                     project=config['project'],
-                    instanceTemplate=instance_template['name']
+                    instanceTemplate=instance_template_name
                 ).execute()
             raise ex
 
