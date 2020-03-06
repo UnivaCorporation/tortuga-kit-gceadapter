@@ -14,9 +14,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from tortuga.kit.mixins import ResourceAdapterMixin
-from tortuga.kit.installer import KitInstallerBase
+import os
+import shutil
 
+from tortuga.kit.mixins import ResourceAdapterMixin, logger
+from tortuga.kit.installer import KitInstallerBase
 
 class GceInstaller(ResourceAdapterMixin, KitInstallerBase):
     puppet_modules = ['univa-tortuga_kit_gceadapter']
@@ -26,3 +28,21 @@ class GceInstaller(ResourceAdapterMixin, KitInstallerBase):
         'startup_script_bare.py',
     ]
     resource_adapter_name = 'gce'
+
+    # Copy the custom facter fact to the appropriate place
+    src_file = os.path.join(
+        self.files_path,
+        'tortuga_gcp_external_ip.sh'
+    )
+    dst_file = '/opt/puppetlabs/facter/facts.d/tortuga_gcp_external_ip.sh'
+
+    #
+    # Prevent existing file from being overwritten
+    #
+    if os.path.exists(dst_file):
+        dst_file += '.new'
+
+    logger.info(
+        'Writing file: {}'.format(dst_file))
+
+    shutil.copy2(src_file, dst_file)
