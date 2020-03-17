@@ -22,6 +22,6 @@
     <location>remote</location>
     <installType>package</installType>
     <nameFormat>compute-#NN</nameFormat>
-    <resourceadapter name="gce"/>
+    <resourceadapter name="GCP"/>
     <cost>10</cost>
 </hardwareprofile>

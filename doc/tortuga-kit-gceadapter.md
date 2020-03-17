@@ -76,7 +76,7 @@ Configure the GCE resource adapter using the `adapter-mgmt`
 command-line interface.
 
 ```shell
-adapter-mgmt create --resource-adapter gce --profile Default \
+adapter-mgmt create --resource-adapter GCP --profile Default \
     --setting default_ssh_user=centos \
     --setting image_url=<image_url> \
     --setting json_keyfile=<filename of json authentication file> \
@@ -186,7 +186,7 @@ Create a default GCE-enabled hardware profile:
 ```shell
 create-hardware-profile --name Compute
 update-hardware-profile --name Compute \
-    --resource-adapter gce --location remote --name-format compute-#NN
+    --resource-adapter GCP --location remote --name-format compute-#NN
 ```
 
 Map the newly created hardware profile to an existing software profile or
@@ -222,7 +222,7 @@ management commands:
 
 Nodes are added using the Tortuga `add-nodes` command. Specifying an Google
 Compute Engine-enabled hardware profile (hardware profile with resource
-adapter set to `gce`) automatically causes Tortuga to use the Google
+adapter set to `GCP`) automatically causes Tortuga to use the Google
 Compute Engine resource adapter to manage the nodes.
 
 For example, the following command-line will add 4 GCE nodes
@@ -265,20 +265,20 @@ removed regularly to prevent compute node name clashes.
 This setting can be disabled as follows:
 
 ```shell
-adapter-mgmt update -r gce -p Default -s randomize_hostname=false
+adapter-mgmt update -r GCP -p Default -s randomize_hostname=false
 ```
 
 or re-enabled as follows:
 
 ```shell
-adapter-mgmt update -r gce -p Default -s randomize_hostname=true
+adapter-mgmt update -r GCP -p Default -s randomize_hostname=true
 ```
 
 Alternatively, simply deleting the setting and falling back to default
 behaviour:
 
 ```shell
-adapter-mgmt update -r gce -p Default -d randomize_hostname
+adapter-mgmt update -r GCP -p Default -d randomize_hostname
 ```
 
 ### Custom Machine Types
@@ -291,7 +291,7 @@ This is configured in Tortuga using a carefully formatted argument to the `type`
 For example, to create compute node VMs with 4 vcpus and 5GiB (5120MiB) RAM:
 
 ```shell
-adapter-mgmt update -r gce -p Default -s type=custom-4-5120
+adapter-mgmt update -r GCP -p Default -s type=custom-4-5120
 ```
 
 ### Instance type to VCPU mapping {#instance_mapping_gce}
@@ -337,30 +337,6 @@ n1-highcpu-96,96
 ```
 
 ### Support for preemptible virtual machines
-
-The Google Compute Engine resource adapter supports [Preemptible Virtual Machines](https://cloud.google.com/preemptible-vms/)
-through a standalone "helper" service in Tortuga called `gce_monitord`.
-
-This service must be manually enabled and started after configuring the Google
-Compute Engine resource adapter.
-
-`gce_monitord` will poll GCE resources every 300s (default) monitoring
-preemptible virtual machines that may have been terminted by Google Compute
-Engine. These nodes will be automatically removed from Tortuga.
-
-**Note:** `gce_monitord` will *only* monitor GCE VM
-instances created/launched by Tortuga.
-
-#### Enable support for preemptible virtual machines
-
-1. Configure GCE resource adapter
-2. Enable and start `gce_monitord`
-
-    ```shell
-    systemctl enable gce_monitord
-    systemctl start gce_monitord
-
-Output of `gce_monitord` service can be displayed through `journalctl`.
 
 #### Adding preemptible nodes
 
@@ -443,7 +419,7 @@ chosen to be assigned the external ip address.
 The legacy `network` setting remains unchanged:
 
 ```shell
-adapter-mgmt update -r gce -p Default -s network=default
+adapter-mgmt update -r GCP -p Default -s network=default
 ```
 
 Since legacy mode networking enables external network access by default,
@@ -470,7 +446,7 @@ The network interfaces assigned to a Tortuga-provisioned VM can be
 displayed under "VM instance details" in the Google Cloud Platform Console.
 
 ```shell
-adapter-mgmt update -r gce -p Default \
+adapter-mgmt update -r GCP -p Default \
     -s networks=default::external,Tortuga-vpc2:subnet1
 ```
 
@@ -479,7 +455,7 @@ Use the `primary` flag in the network interface specification to denote the
 used by Tortuga. For example,
 
 ```shell
-adapter-mgmt update -r gce -p Default \
+adapter-mgmt update -r GCP -p Default \
     -s othernet:othernet-subnet1:external,Tortuga2:subnet1:external;primary
 ```
 
@@ -493,7 +469,7 @@ Google Cloud Platform project named `PROJECT2`. The subnetwork is configured
 to be `SUBNET1` from the default region.
 
 ```shell
-adapter-mgmt update -r gce -p Default \
+adapter-mgmt update -r GCP -p Default \
     -s networks=PROJECT2/NETWORK1:SUBNET1
 ```
 
@@ -501,7 +477,7 @@ In the following example, the region for the subnet overrides the default
 region for the resource adapter configuration profile:
 
 ```shell
-adapter-mgmt update -r gce -p Default \
+adapter-mgmt update -r GCP -p Default \
     -s networks=PROJECT2/NETWORK3:REGION4/SUBNET5
 ```
 
@@ -533,5 +509,5 @@ on the resource adapter profile. For example, to enable a single GPU of
 type `ACCELERATOR_TYPE` on the default resource adapter profile:
 
 ```shell
-adapter-mgmt update -r gce -p Default --setting accelerators="ACCELERATOR_TYPE:1"
+adapter-mgmt update -r GCP -p Default --setting accelerators="ACCELERATOR_TYPE:1"
 ```
