@@ -30,6 +30,10 @@ class GceInstaller(ResourceAdapterMixin, KitInstallerBase):
     resource_adapter_name = 'GCP'
 
     def  action_post_install(self, *args, **kwargs):
+        # Call super class to make sure we do the standard post install
+        # stuff
+        super().action_post_install(*args, **kwargs)
+
         # Copy the custom facter fact to the appropriate place
         src_file = os.path.join(
             self.files_path,
