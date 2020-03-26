@@ -26,6 +26,9 @@ class GceInstaller(ResourceAdapterMixin, KitInstallerBase):
         'gce-instance-sizes.csv',
         'startup_script.py',
         'startup_script_bare.py',
+        'bootstrap-aws-centos7.py',
+        'bootstrap-aws-centos8.py',
+        'bootstrap-aws-ubuntu18.py',
     ]
     resource_adapter_name = 'GCP'
 
