@@ -1656,6 +1656,7 @@ insertnode_request = None
                 zone=config['zone']
             ).execute()
         except Exception as ex:
+            self._logger.error(f"Error creating scale set: {str(ex)}")
             # Cleanup on failure - if we created an instance template
             # specifically for this scale set, then delete it
             if template_created:
