@@ -21,6 +21,13 @@ def get_version():
         return '{}+{}'.format(kit_data['version'], kit_data['iteration'])
 
 
+def get_requirements():
+    with open('requirements.txt') as fp:
+        requirements = [buf.rstrip() for buf in fp.readlines()]
+
+    return requirements
+
+
 setup(
     name='tortuga-gce-adapter',
     version=get_version(),
@@ -35,13 +42,7 @@ setup(
         'tortuga.resourceAdapter'
     ],
     zip_safe=False,
-    install_requires=[
-        'colorama',
-        'google-api-python-client',
-        'gevent',
-        'requests',
-        'daemonize',
-    ],
+    install_requires=get_requirements(),
     entry_points={
         'console_scripts': [
             'setup-gce=tortuga.scripts.setup_gce:main',
