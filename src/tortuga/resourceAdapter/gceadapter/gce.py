@@ -2096,7 +2096,7 @@ insertnode_request = None
                                cloudserver_id: str, **kwargs):
         cfg = self.get_config(cloudconnectorprofile_id)
         session = gceAuthorize_from_json(cfg.get('json_keyfile'))
-        project, zone, instance_name = \
+        project, zone, _, instance_name = \
             self._get_instance_name_from_cloudserver_id(cloudserver_id)
         response = session.svc.instances().stop(
             project=project, zone=zone, instance=instance_name).execute()
@@ -2106,7 +2106,7 @@ insertnode_request = None
                                 cloudserver_id: str, **kwargs):
         cfg = self.get_config(cloudconnectorprofile_id)
         session = gceAuthorize_from_json(cfg.get('json_keyfile'))
-        project, zone, instance_name = \
+        project, zone, _, instance_name = \
             self._get_instance_name_from_cloudserver_id(cloudserver_id)
         response = session.svc.instances().start(
             project=project, zone=zone, instance=instance_name).execute()
@@ -2116,7 +2116,7 @@ insertnode_request = None
                                   cloudserver_id: str, **kwargs):
         cfg = self.get_config(cloudconnectorprofile_id)
         session = gceAuthorize_from_json(cfg.get('json_keyfile'))
-        project, zone, instance_name = \
+        project, zone, _, instance_name = \
             self._get_instance_name_from_cloudserver_id(cloudserver_id)
         response = session.svc.instances().reset(
             project=project, zone=zone, instance=instance_name).execute()
@@ -2126,17 +2126,42 @@ insertnode_request = None
                                  cloudserver_id: str, **kwargs):
         cfg = self.get_config(cloudconnectorprofile_id)
         session = gceAuthorize_from_json(cfg.get('json_keyfile'))
-        project, zone, instance_name = \
+        project, zone, instance_group, instance_name = \
             self._get_instance_name_from_cloudserver_id(cloudserver_id)
-        response = session.svc.instances().delete(
-            project=project, zone=zone, instance=instance_name).execute()
+        #
+        # If the instance is part of an instance group, then we use a special
+        # deleteInstances call on the instanceGroup object. This has the effect
+        # of both deleting the instance and reducing the number of requested
+        # instances on the instance group simultaneously.
+        #
+        if instance_group:
+            body = {
+                "instances": [
+                    f"zones/{zone}/instances/{instance_name}"
+                ]
+            }
+            response = session.svc.instanceGroupManagers().deleteInstances(
+                project=project, zone=zone, instanceGroupManager=instance_group,
+                body=body).execute()
+        else:
+            response = session.svc.instances().delete(
+                project=project, zone=zone, instance=instance_name).execute()
         _blocking_call(session.svc, project, response)
 
     def _get_instance_name_from_cloudserver_id(
-            self, cloudserver_id) -> Tuple[str, str, str]:
+            self, cloudserver_id) -> Tuple[str, str, Optional[str], str]:
+        """
+        Parses a cloud server ID and returns the components as follows:
+
+            project, zone, instance_group, instance_id
+
+        where the instance group will be None if the instance is not part of
+        an instance group.
+
+        """
         #
         # Cloud server IDs for Azure are in the following form
-        # gcp:<project-name>:<zone-name>:<instance-name>
+        # gcp:<project-name>:<zone-name>:[<instance-group>/]<instance-id>
         #
         id_parts = cloudserver_id.split(':')
         if len(id_parts) != 4:
@@ -2146,7 +2171,15 @@ insertnode_request = None
         #
         if id_parts[0].lower() not in [self.__adaptername__.lower(), "gcp"]:
             raise Exception("Resource adapter mismatch")
-        return id_parts[1], id_parts[2], id_parts[3]
+        #
+        # Check if there is an instance group as part of the instance id
+        #
+        instance_id = id_parts[3]
+        instance_group = None
+        if "/" in instance_id:
+            instance_group, instance_id = instance_id.split("/")
+
+        return id_parts[1], id_parts[2], instance_group, instance_id
 
 
 class GoogleComputeEngine:
