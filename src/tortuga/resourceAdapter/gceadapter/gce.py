@@ -19,7 +19,7 @@ import subprocess
 import time
 import traceback
 import urllib.parse
-from typing import Any, Dict, List, NoReturn, Optional, Tuple
+from typing import Any, Dict, List, NoReturn, Optional, Tuple, cast
 
 import apiclient
 import gevent
@@ -49,6 +49,8 @@ from tortuga.node import state
 from tortuga.resourceAdapter.resourceAdapter \
     import (DEFAULT_CONFIGURATION_PROFILE_NAME, ResourceAdapter)
 from tortuga.resourceAdapter.utility import patch_managed_tags
+from tortuga.resources.manager import ResourceRequestStoreManager
+from tortuga.resources.types import ScaleSetResourceRequest
 from tortuga.utility.cloudinit import get_cloud_init_path
 from .settings import DEFAULT_SLEEP_TIME, SETTINGS
 
@@ -2147,6 +2149,14 @@ insertnode_request = None
             response = session.svc.instances().delete(
                 project=project, zone=zone, instance=instance_name).execute()
         _blocking_call(session.svc, project, response)
+        #
+        # If this node was a member of an instance group, we decrement the
+        # associated resource request so that it more-or-less reflects reality.
+        # A periodic sync of instance groups will ensure that the numbers match
+        # on an ongoing basis
+        #
+        if instance_group:
+            self._decrement_resource_request(instance_group)
 
     def _get_instance_name_from_cloudserver_id(
             self, cloudserver_id) -> Tuple[str, str, Optional[str], str]:
@@ -2180,6 +2190,39 @@ insertnode_request = None
             instance_group, instance_id = instance_id.split("/")
 
         return id_parts[1], id_parts[2], instance_group, instance_id
+
+    def _decrement_resource_request(self, instance_group: str):
+        #
+        # Instance groups created through resource requests are named as
+        # scale-set-<resource-request-id>. If the instance group being passed
+        # in does not match this pattern, then we ignore it, as it isn't
+        # being managed by Tortuga.
+        #
+        if not instance_group.startswith("scale-set"):
+            return
+        resource_request_id = instance_group.replace("scale-set-", "")
+        #
+        # If for some reason we end up with an empty string, don't bother
+        # going any further
+        #
+        if not resource_request_id:
+            return
+        #
+        # We don't want this process to trigger any events, so we get a version
+        # of the store that doesn't generate events on save.
+        #
+        store = ResourceRequestStoreManager.get().get_non_event_generating_store()
+        rr = cast(ScaleSetResourceRequest, store.get(resource_request_id))
+        #
+        # If a resource request is not found, then nothing to do.
+        #
+        if not rr:
+            return
+
+        rr.desired_nodes -= 1
+        if rr.desired_nodes < 0:
+            return
+        store.save(rr)
 
 
 class GoogleComputeEngine:
