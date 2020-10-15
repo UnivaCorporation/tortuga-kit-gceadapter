@@ -1559,6 +1559,14 @@ insertnode_request = None
                           common_launch_args,
                           persistent_disks=persistent_disks)
 
+        # Process instance data - any accelerators need to specify *only* the
+        # accelerator type string, *not* the full URL. This is a quirk that
+        # only seems to apply to instance templates.
+        for accelerator in instance.get("guestAccelerators", []):
+            type_url = accelerator["acceleratorType"]
+            type_ = type_url.rsplit("/", 1)[-1]
+            accelerator["acceleratorType"] = type_
+
         # Override a few fields to meet instanceTemplates API
         instance["machineType"] = session['config']['type']
         for disk in instance["disks"]:
