@@ -1561,6 +1561,14 @@ insertnode_request = None
                           common_launch_args,
                           persistent_disks=persistent_disks)
 
+        # Process instance data - any accelerators need to specify *only* the
+        # accelerator type string, *not* the full URL. This is a quirk that
+        # only seems to apply to instance templates.
+        for accelerator in instance.get("guestAccelerators", []):
+            type_url = accelerator["acceleratorType"]
+            type_ = type_url.rsplit("/", 1)[-1]
+            accelerator["acceleratorType"] = type_
+
         # Override a few fields to meet instanceTemplates API
         instance["machineType"] = session['config']['type']
         for disk in instance["disks"]:
@@ -1583,10 +1591,30 @@ insertnode_request = None
                     initial_response,
                     polling_interval=session['config']['sleeptime'])
         except Exception as ex:
-            connection.svc.instanceTemplates().delete(
-                project=session['config']['project'],
-                instanceTemplate=name
-            ).execute()
+            # Log exception
+            self._logger.info("create_instance_template(): error creating "
+                              f" instance template [{name}]: {str(ex)}")
+
+            # Get error response status
+            response_status = int(getattr(ex, "resp").get("status", -1))
+
+            # If it's a 409 error, that means the template already exists, so
+            # we *don't* want to delete the template.
+            if response_status != 409:
+                # If something went wrong, try to delete the instance template,
+                # but it probably doesn't exist, so don't worry if it fails
+                try:
+                    connection.svc.instanceTemplates().delete(
+                        project=session['config']['project'],
+                        instanceTemplate=name
+                    ).execute()
+                except Exception as ex2:
+                    # Catch secondary exception and write a log message
+                    self._logger.info(
+                        "create_instance_template(): error deleting instance "
+                        f"template [{name}]: {str(ex2)}")
+
+            # Raise the original exception
             raise ex
 
         return instanceTemplate
