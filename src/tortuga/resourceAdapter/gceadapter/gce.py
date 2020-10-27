@@ -1999,23 +1999,8 @@ insertnode_request = None
 
             return result['selfLink']
         except googleapiclient.errors.HttpError as exc:
-
-            errors = self.__process_exception(exc.content)
-
-            if errors:
-                self._logger.error(
-                    'The following error(s) were reported:'
-                )
-
-                for err_message, err_reason, err_domain in errors:
-                    self._logger.error(
-                        '%s (reason: %s, domain: %s)',
-                        err_message,
-                        err_reason,
-                        err_domain
-                    )
-
-        raise OperationFailed('Error reported by Google Compute Engine')
+            self._logger.error(f"Problem getting image by name: {str(exc)}")
+            raise OperationFailed(exc)
 
     def __gce_get_image_family_url(self, svc, image_family_project: str,
                                    image_family: str) -> str:
@@ -2031,23 +2016,8 @@ insertnode_request = None
 
             return result['selfLink']
         except googleapiclient.errors.HttpError as exc:
-
-            errors = self.__process_exception(exc.content)
-
-            if errors:
-                self._logger.error(
-                    'The following error(s) were reported:'
-                )
-
-                for err_message, err_reason, err_domain in errors:
-                    self._logger.error(
-                        '%s (reason: %s, domain: %s)',
-                        err_message,
-                        err_reason,
-                        err_domain
-                    )
-
-        raise OperationFailed('Error reported by Google Compute Engine')
+            self._logger.error(f"Problem getting image family URL: {str(exc)}")
+            raise OperationFailed(exc)
 
     def set_node_tag(self, node: Node, tag_name: str, tag_value: str):
         instance_name = get_instance_name_from_host_name(node.name)
